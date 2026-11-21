@@ -210,7 +210,8 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         case "radarCount": return Radar.shared.count
         case "radarPeers": return Radar.shared.snapshot()
         case "radarName":
-            later { Radar.shared.setName(arg(a, 0)) }
+            let nm = arg(a, 0)
+            later { Radar.shared.setName(nm) }
             return true
         case "walletText": return Wallets.shared.pageText()
         case "lessonsText": return Lessons.shared.text()
