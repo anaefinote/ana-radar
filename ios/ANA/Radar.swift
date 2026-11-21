@@ -90,8 +90,8 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     private func decRssi(_ c: Character) -> Int { -(Int(c.asciiValue ?? 33) - 33) - 40 }
 
     private func packPayload() -> String {
-        var s = selfId + "~" + String(cleanName(beaconName).prefix(6)) + "~"
-        let mine = peers.values.filter { !$0.selfId.isEmpty }.sorted { $0.smRssi > $1.smRssi }.prefix(6)
+        var s = selfId + "~" + String(cleanName(beaconName).prefix(5)) + "~"
+        let mine = peers.values.filter { !$0.selfId.isEmpty }.sorted { $0.smRssi > $1.smRssi }.prefix(4)
         for p in mine { s += p.selfId + String(encRssi(p.smRssi)) }
         return s
     }
