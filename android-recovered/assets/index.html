@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ANA PoC</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #05070C; overflow: hidden; }
+  /* Canvas holds width*devicePixelRatio pixels shown at 100vw: 1 sketch pixel = 1 device pixel */
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  /* Processing.js sets image-rendering to "optimize-contrast" (hard pixel edges if the canvas is ever scaled) */
+  #ana { image-rendering: auto !important; position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<canvas id="ana"></canvas>
+<!-- processing.min.js (Processing.js 1.6.6) is added at build time — see HANDOFF.md -->
+<script src="processing.min.js"></script>
+<script src="glball.js"></script>
+<script src="glmaze.js"></script>
+<script>
+(function () {
+  // Processing.js normally scans the page on DOMContentLoaded and exit()s every sketch already running.
+  // On Android this page starts the sketch before that event, so it would be stopped after one frame.
+  // We start the sketch ourselves, so switch the automatic scan off.
+  Processing.disableInit();
+
+  var onAndroid = (typeof AndroidANA !== 'undefined');
+  var p = null;
+  var queue = [];
+  var cv = document.getElementById('ana');
+
+  // 100% pixels: the canvas's exact on-screen size in device pixels. getBoundingClientRect() keeps the
+  // fractional CSS width (411.43 on a 1080-px phone at 2.625x); innerWidth would round it to 411 -> 1079 px.
+  function devW() { return Math.round(cv.getBoundingClientRect().width  * (window.devicePixelRatio || 1)); }
+  function devH() { return Math.round(cv.getBoundingClientRect().height * (window.devicePixelRatio || 1)); }
+
+  // Processing.js measures mouseX/mouseY (and touches, which it turns into mouse events) in CSS pixels,
+  // but the sketch is drawn in device pixels. Re-send every mouse event scaled to canvas pixels,
+  // so mouseX/mouseY match what the sketch draws. (Does nothing when the two are the same, e.g. desktop.)
+  function rescale(e) {
+    if (e.__ana) return;
+    var r = cv.getBoundingClientRect();
+    var kx = cv.width / r.width, ky = cv.height / r.height;
+    if (Math.abs(kx - 1) < 0.001 && Math.abs(ky - 1) < 0.001) return;
+    e.stopImmediatePropagation();
+    var n = new MouseEvent(e.type, {
+      bubbles: true, cancelable: true, view: window, detail: e.detail,
+      clientX: r.left + (e.clientX - r.left) * kx, clientY: r.top + (e.clientY - r.top) * ky,
+      screenX: e.screenX, screenY: e.screenY, button: e.button, buttons: e.buttons,
+      ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey
+    });
+    n.__ana = true;
+    e.target.dispatchEvent(n);
+  }
+  ['mousedown', 'mousemove', 'mouseup', 'click', 'dblclick'].forEach(function (t) {
+    cv.addEventListener(t, rescale, true);
+  });
+
+  // Touches: Processing.js 1.6.6's own touch support is broken (on the first touch it tries to swap its mouse
+  // handlers for touch handlers, but its detach loop never removes anything, so every later touch stacks
+  // another set and one tap fires mousePressed() 2, 3, 4... times). So touches never reach it: each one is
+  // turned into a scaled mouse event here, which its mouse handlers deal with correctly.
+  var touchId = null;
+  // Two fingers: a pinch. The sketch gets pinchStart(), pinch(ratio since the last move), pinchEnd().
+  var pinching = false, pinchD = 0, lastX = 0, lastY = 0;
+  function tdist(e) {
+    var a = e.touches[0], b = e.touches[1];
+    return Math.sqrt((a.clientX - b.clientX) * (a.clientX - b.clientX) + (a.clientY - b.clientY) * (a.clientY - b.clientY));
+  }
+
+  function touchToMouse(e) {
+    if (e.cancelable) e.preventDefault();          // also stops the browser's own touch->mouse emulation
+    e.stopImmediatePropagation();
+    if (e.touches && e.touches.length >= 2) {
+      if (!pinching) {
+        pinching = true;
+        pinchD = tdist(e);
+        if (p && p.pinchStart) p.pinchStart();
+        // end the one-finger press that started it (the sketch has already marked it as not a tap)
+        var up = new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window, clientX: lastX, clientY: lastY, button: 0, buttons: 0 });
+        up.__ana = true;
+        cv.dispatchEvent(up);
+      }
+      else if (e.type === 'touchmove') {
+        var d = tdist(e);
+        if (pinchD > 0 && p && p.pinch) p.pinch(d / pinchD);
+        pinchD = d;
+      }
+      return;
+    }
+    if (pinching) {                                // until every finger is off, nothing else
+      if (!e.touches || e.touches.length === 0) {
+        pinching = false;
+        touchId = null;
+        if (p && p.pinchEnd) p.pinchEnd();
+      }
+      return;
+    }
+    var t = null, i;
+    if (e.type === 'touchstart') {
+      if (touchId !== null) return;                // one finger at a time, like a mouse
+      t = e.changedTouches[0]; touchId = t.identifier;
+    } else {
+      for (i = 0; i < e.changedTouches.length; i++) if (e.changedTouches[i].identifier === touchId) t = e.changedTouches[i];
+      if (!t) return;
+      if (e.type !== 'touchmove') touchId = null;
+    }
+    var r = cv.getBoundingClientRect();
+    var kx = cv.width / r.width, ky = cv.height / r.height;
+    var cx = r.left + (t.clientX - r.left) * kx, cy = r.top + (t.clientY - r.top) * ky;
+    lastX = cx; lastY = cy;
+    function send(type, buttons) {
+      var n = new MouseEvent(type, { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy,
+        screenX: t.screenX, screenY: t.screenY, button: 0, buttons: buttons });
+      n.__ana = true;
+      cv.dispatchEvent(n);
+    }
+    // Processing.js updates mouseX/mouseY only on mousemove (a mouse always moves before it clicks; a finger doesn't)
+    if (e.type === 'touchstart') { send('mousemove', 0); send('mousedown', 1); }
+    else if (e.type === 'touchmove') send('mousemove', 1);
+    else { send('mousemove', 1); send('mouseup', 0); }
+  }
+  ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (t) {
+    cv.addEventListener(t, touchToMouse, { capture: true, passive: false });
+  });
+
+  // Called by MainActivity.deliverPending() for every captured line. line = its number in ana_log.txt.
+  // ev = the time the notification points to ("yyyy-mm-dd hh:mm:ss"), "" if none (EFINOTE's future ball)
+  window.anaDeliver = function (src, time, pkg, title, body, key, lag, line, ev) {
+    if (p) {
+      if (typeof line === 'number' && p.setNextLine) p.setNextLine(line);
+      p.onNotif(src, time, pkg, title, body, key, lag, ev ? String(ev) : '');
+    }
+    else queue.push([src, time, pkg, title, body, key, lag, line, ev]);
+  };
+
+  // Compiling the .pde files to JavaScript takes the longest part of startup on an old phone. The compiled
+  // sketch is kept (localStorage, keyed by a hash of the source), so only the first start after an update compiles.
+  function sketchFor(source) {
+    var h = 5381;
+    for (var i = 0; i < source.length; i++) h = ((h * 33) ^ source.charCodeAt(i)) | 0;
+    var key = 'pjs:' + source.length + ':' + h;
+    try {
+      var js = localStorage.getItem(key);
+      if (js) return new Function('return ' + js)()(Processing.Sketch);
+    } catch (e) { }
+    var sk = Processing.compile(source);
+    try {
+      for (var k = localStorage.length - 1; k >= 0; k--) {
+        var n = localStorage.key(k);
+        if (n && n.indexOf('pjs:') === 0 && n !== key) localStorage.removeItem(n);
+      }
+      localStorage.setItem(key, sk.toString());
+    } catch (e) { }
+    return sk;
+  }
+
+  function start(source) {
+    var t0 = Date.now();
+    p = new Processing(cv, sketchFor(source));
+    window.__anaStartMs = Date.now() - t0;
+
+    if (onAndroid) {
+      p.bindJavascript({
+        scan:        function () { AndroidANA.scan(); },
+        openAccess:  function () { AndroidANA.openAccess(); },
+        manualEntry: function () { AndroidANA.manualEntry(); },
+        addReminder: function () { AndroidANA.addReminder(); },
+        exportLog:   function () { AndroidANA.exportLog(); },
+        exportPngmesh: function (lines) { AndroidANA.exportPngmesh(String(lines)); },
+        importFiles: function () { AndroidANA.importFiles(); },
+        watchList:   function () { return String(AndroidANA.watchList()); },
+        saveWatch:   function (list) { AndroidANA.saveWatch(String(list)); },
+        pref:        function (k) { return String(AndroidANA.pref(String(k))); },
+        setPref:     function (k, v) { AndroidANA.setPref(String(k), String(v)); },
+        skinData:    function (f) { return String(AndroidANA.skinData(String(f))); },
+        appIcon:     function (k) { return String(AndroidANA.appIcon(String(k))); },
+        appLabel:    function (k) { return String(AndroidANA.appLabel(String(k))); },
+        appCategory: function (k) { return String(AndroidANA.appCategory(String(k))); },
+        launchApp:   function (k) { return !!AndroidANA.launchApp(String(k)); },
+        usageOk:     function () { return !!AndroidANA.usageOk(); },
+        openUsageAccess: function () { AndroidANA.openUsageAccess(); },
+        usageToday:  function () { return String(AndroidANA.usageToday()); },
+        appSettings: function (k) { AndroidANA.appSettings(String(k)); },
+        closeApp:    function (k) { return !!AndroidANA.closeApp(k); },
+        clearNotifs: function (k) { return AndroidANA.clearNotifs(String(k)) | 0; },
+        appStatus:   function (k) { return String(AndroidANA.appStatus(String(k))); },
+        gmOk:        function () { return GLMaze.ok; },
+        gmDoors:     function (s, pg) { GLMaze.doors(s, pg); },
+        gmBegin:     function (w, h) { GLMaze.begin(w, h); },
+        gmLayer:     function (s, a) { GLMaze.layer(s, a); },
+        gmEnd:       function (x, y) { GLMaze.end(); },
+        gmBg:        function (pg) { GLMaze.bg(pg); },
+        gmHide:      function () { GLMaze.hide(); },
+        gmClear:     function () { var c = cv.getContext('2d'); c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height); c.restore(); },
+        glOk:        function () { return GLBall.ok; },
+        glTextures:  function (f, b) { GLBall.textures(f, b); },
+        glBall:      function (x, y, sz, redraw, a) {
+          GLBall.draw(cv, Math.round(x), Math.round(y), sz, redraw ? { sr: a[0], fov: a[1], R: a[2], dist: a[3], camX: a[4], camY: a[5],
+            brt: a[6], px: a[7], py: a[8], pw: a[9], ph: a[10], lx: a[11], ly: a[12], lz: a[13], hx: a[14], hy: a[15], hz: a[16],
+            tw: a[17], th: a[18] } : null);
+        },
+        status:      function () { return AndroidANA.status(); },
+        sdkInt:      function () { return AndroidANA.sdkInt() | 0; },
+        iphoneLink:  function (on) { AndroidANA.iphoneLink(!!on); },
+        iphoneDismiss: function (k) { return !!AndroidANA.iphoneDismiss(String(k)); },
+        copyText:    function (t) { AndroidANA.copyText(String(t)); },
+        walletText:  function () { return String(AndroidANA.walletText()); },     // WATCH
+        lessonsText: function () { return String(AndroidANA.lessonsText ? AndroidANA.lessonsText() : ''); },   // LESSONS
+        lessonsOpen: function () { if (AndroidANA.lessonsOpen) AndroidANA.lessonsOpen(); },
+        billsText: function () { return String(AndroidANA.billsText ? AndroidANA.billsText() : ''); },        // BILLS
+        billsOpen: function () { if (AndroidANA.billsOpen) AndroidANA.billsOpen(); },
+        chatOpen: function () { if (AndroidANA.chatOpen) AndroidANA.chatOpen(); },
+        chatList: function () { return AndroidANA.chatList ? String(AndroidANA.chatList() || '') : ''; },
+        chatWrite: function () { if (AndroidANA.chatWrite) AndroidANA.chatWrite(); },
+        chatClear: function (k) { if (AndroidANA.chatClear) AndroidANA.chatClear(String(k)); },
+        findAdd: function () { if (AndroidANA.findAdd) AndroidANA.findAdd(); },
+        findRemove: function (n) { if (AndroidANA.findRemove) AndroidANA.findRemove(String(n)); },
+        walletBusy:  function () { return !!AndroidANA.walletBusy(); },
+        walletRefresh: function () { AndroidANA.walletRefresh(); },
+        walletAdd:   function () { AndroidANA.walletAdd(); },
+        walletEdit:  function (id) { AndroidANA.walletEdit(String(id)); },
+        walletReveal: function () { AndroidANA.walletReveal(); },
+        walletBack:  function () { return !!AndroidANA.walletBack(); },
+        walletFront: function () { AndroidANA.walletFront(); },
+        walletTotals: function () { return AndroidANA.walletTotals() || ''; },
+        gstSend:     function (n, h, r, p) { AndroidANA.gstSend(String(n), String(h), String(r), String(p)); },
+        gstInbox:    function () { return AndroidANA.gstInbox() || ''; },
+        gstAsk:      function (id, t, m, s) { AndroidANA.gstAsk(String(id), String(t), String(m), String(s)); },
+        gstPick:     function (id, t, items) { AndroidANA.gstPick(String(id), String(t), String(items)); },
+        gstAnswer:   function (id) { return AndroidANA.gstAnswer(String(id)) || ''; },
+        flexKey:     function () { return AndroidANA.flexKey() || ''; },
+        flexSign:    function (t) { return AndroidANA.flexSign(String(t)) || ''; },
+        flexVerify:  function (k, t, s) { return !!AndroidANA.flexVerify(String(k), String(t), String(s)); },
+        flexHash:    function (t) { return AndroidANA.flexHash(String(t)) || ''; },
+        iphoneState: function () { return String(AndroidANA.iphoneState()); },
+        iphoneTimes: function () { return AndroidANA.iphoneTimes ? String(AndroidANA.iphoneTimes() || '') : ''; },
+        openOwnInfo: function () { AndroidANA.openOwnInfo(); },
+        screenW:     function () { return devW(); },
+        screenH:     function () { return devH(); }
+      });
+    }
+
+    // scaled images (app icons, skins) at the browser's best quality; Processing.js leaves it on "low"
+    function hq() { var x = cv.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; }
+    hq();
+    setInterval(hq, 1000);                         // size() makes a fresh context state
+
+    while (queue.length) window.anaDeliver.apply(null, queue.shift());
+    if (onAndroid) AndroidANA.ready();
+  }
+
+  if (onAndroid) {
+    start(AndroidANA.readSketch());
+  } else {
+    // Desktop browser test: serve this folder + the .pde files over http and open index.html.
+    Promise.all(['ANA_PoC.pde', 'Appify.pde', 'Ball.pde', 'Bar.pde', 'Bridge.pde', 'Entry.pde', 'Future.pde', 'Maze.pde', 'Pulse2.pde', 'Reader.pde', 'Settings2.pde', 'Timeline2.pde', 'Ui.pde'].map(function (f) {
+      return fetch(f).then(function (r) { return r.text(); });
+    })).then(function (parts) { start(parts.join('\n')); });
+  }
+})();
+</script>
+</body>
+</html>
