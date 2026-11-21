@@ -37,6 +37,7 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     private var central: CBCentralManager?
     private var pm: CBPeripheralManager?
     private var wanted = false
+    private var beaconName = ""                    // the name this phone broadcasts ("the name people see you as")
     private let fresh: TimeInterval = 15          // a peer counts as "here" if heard within this many seconds
     private var sweep: Timer?
 
@@ -60,11 +61,27 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     /// How many ANA devices are in the room right now.
     var count: Int { peers.count }
 
-    /// A compact line for the bridge/sketch:  "count\tid8,rssi,ageSec;id8,rssi,ageSec;…"  (strongest first)
+    /// Set the name this phone broadcasts; re-advertise if live.
+    func setName(_ n: String) {
+        var nm = n.replacingOccurrences(of: ",", with: " ")
+                  .replacingOccurrences(of: ";", with: " ")
+                  .trimmingCharacters(in: .whitespacesAndNewlines)
+        if nm == "Me" { nm = "" }                       // the GST default is not a real name
+        if nm.count > 20 { nm = String(nm.prefix(20)) }
+        beaconName = nm
+        if wanted, let pm = pm, pm.state == .poweredOn { pm.stopAdvertising(); startBeacon() }
+    }
+
+    private func cleanName(_ s: String) -> String {
+        if s == "ANA" || s == "ANA device" { return "" }   // placeholder, not a real name -> show hex only
+        return s.replacingOccurrences(of: ",", with: " ").replacingOccurrences(of: ";", with: " ")
+    }
+
+    /// A compact line for the bridge/sketch:  "count\tid8,rssi,ageSec,name;…"  (strongest first)
     func snapshot() -> String {
         let now = Date()
-        let rows = peers.values.sorted { $0.rssi > $1.rssi }.map {
-            "\($0.id.uuidString.prefix(8)),\($0.rssi),\(Int(now.timeIntervalSince($0.lastSeen)))"
+        let rows = peers.values.sorted { $0.rssi > $1.rssi }.map { p -> String in
+            "\(p.id.uuidString.prefix(8)),\(p.rssi),\(Int(now.timeIntervalSince(p.lastSeen))),\(cleanName(p.name))"
         }
         return "\(peers.count)\t" + rows.joined(separator: ";")
     }
@@ -102,12 +119,17 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     func centralManager(_ c: CBCentralManager, didDiscover p: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let now = Date()
-        let name = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? p.name ?? "ANA device"
+        // iPhones carry the name in the BLE local name; Android carries it in manufacturer data (id 0xFFFF).
+        var name = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        if name == nil || name == "ANA", let md = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, md.count > 2 {
+            if let n = String(data: md.subdata(in: 2..<md.count), encoding: .utf8), !n.isEmpty { name = n }
+        }
+        let resolvedName = name ?? p.name ?? "ANA device"
         if var peer = peers[p.identifier] {
-            peer.rssi = RSSI.intValue; peer.lastSeen = now; peer.name = name
+            peer.rssi = RSSI.intValue; peer.lastSeen = now; peer.name = resolvedName
             peers[p.identifier] = peer
         } else {
-            peers[p.identifier] = Peer(id: p.identifier, rssi: RSSI.intValue, firstSeen: now, lastSeen: now, name: name)
+            peers[p.identifier] = Peer(id: p.identifier, rssi: RSSI.intValue, firstSeen: now, lastSeen: now, name: resolvedName)
             onChange?()
         }
     }
@@ -118,7 +140,7 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
         guard wanted, let pm = pm, pm.state == .poweredOn, !pm.isAdvertising else { return }
         pm.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [Radar.service],
-            CBAdvertisementDataLocalNameKey: "ANA"
+            CBAdvertisementDataLocalNameKey: beaconName.isEmpty ? "ANA" : beaconName
         ])
     }
 

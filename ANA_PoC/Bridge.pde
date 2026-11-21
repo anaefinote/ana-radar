@@ -49,7 +49,8 @@ interface JavaScript {
   boolean iphoneDismiss(String key);  // clear that notification on the iPhone (iOS: through ANA on Android); false if not possible
   void radarOn(boolean on);            // RADAR: scan for nearby ANA devices (and beacon this one)
   int radarCount();                    // how many ANA devices are nearby right now
-  String radarPeers();                 // "count\tid8,rssi,age;..." strongest signal first
+  String radarPeers();                 // "count\tid8,rssi,age,name;..." strongest signal first
+  void radarName(String n);            // the display name this phone broadcasts ("the name people see you as")
   String walletText();                 // WATCH (iPhone): the wallets and their activity, tab-separated lines
   boolean walletBusy();                // WATCH: checking right now
   void walletRefresh();                // WATCH: check every wallet now

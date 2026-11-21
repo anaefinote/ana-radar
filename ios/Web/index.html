@@ -227,6 +227,7 @@
         radarOn:    function (on) { if (AndroidANA.radarOn) AndroidANA.radarOn(!!on); },
         radarCount: function () { return AndroidANA.radarCount ? (AndroidANA.radarCount() | 0) : 0; },
         radarPeers: function () { return AndroidANA.radarPeers ? String(AndroidANA.radarPeers() || '') : ''; },
+        radarName:  function (n) { if (AndroidANA.radarName) AndroidANA.radarName(String(n || '')); },
         walletBusy:  function () { return window.__ANA_IOS ? !!AndroidANA.walletBusy() : false; },
         walletRefresh: function () { if (window.__ANA_IOS) AndroidANA.walletRefresh(); },
         walletAdd:   function () { if (window.__ANA_IOS) AndroidANA.walletAdd(); },

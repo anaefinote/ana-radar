@@ -10,7 +10,7 @@ window.__ANA_IOS = true;
     'appSettings', 'closeApp', 'clearNotifs', 'appStatus', 'sdkInt', 'openOwnInfo', 'scan', 'openAccess',
     'manualEntry', 'addReminder', 'exportLog', 'exportPngmesh', 'importFiles', 'iphoneLink', 'iphoneState', 'iphoneTimes', 'iphoneDismiss', 'copyText',
     'walletText', 'walletBusy', 'walletRefresh', 'walletAdd', 'walletEdit', 'lessonsText', 'lessonsOpen', 'billsText', 'billsOpen', 'chatOpen', 'chatList', 'chatWrite', 'chatClear', 'findAdd', 'findRemove',
-    'walletReveal', 'walletBack', 'walletFront', 'radarOn', 'radarCount', 'radarPeers',
+    'walletReveal', 'walletBack', 'walletFront', 'radarOn', 'radarCount', 'radarPeers', 'radarName',
     'walletTotals', 'gstSend', 'gstInbox', 'gstAsk', 'gstPick', 'gstAnswer',
     'flexKey', 'flexSign', 'flexVerify', 'flexHash'];
   var A = {};

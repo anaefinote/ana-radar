@@ -87,7 +87,8 @@ void drawRadar() {
       fill(#EAFBF6);
       textAlign(LEFT, BASELINE);
       textSizeQ(27 * fk);
-      boldTextF("ANA · " + f[0], FX(132), y + 36 * fk);
+      String nm = (f.length > 3 && trim(f[3]).length() > 0) ? trim(f[3]) : "";
+      boldTextF(nm.length() > 0 ? ("ANA · " + f[0] + " · " + nm) : ("ANA · " + f[0]), FX(132), y + 36 * fk);
       fill(#9FD9CE);
       textSizeQ(21 * fk);
       int age = int(f[2]);
@@ -117,5 +118,13 @@ int rdrHash(String s) {
 }
 
 void radarTap(float mx, float my) {
-  poke();                                 // keep the scope awake; room for per-device actions later
+  poke();
+  // tap a device in the list -> open CHATNOTE and talk to who's nearby (discovery -> conversation)
+  int n = (js != null) ? js.radarCount() : 0;
+  if (n <= 0) return;
+  int shown = min(n, 4);
+  float top = FY(995), rowH = 92 * fk;
+  if (mx >= FX(45) && mx <= FX(45) + 762 * fk && my >= top && my <= top + shown * rowH + 22 * fk) {
+    chatOpen();
+  }
 }
