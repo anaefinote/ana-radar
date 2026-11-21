@@ -43,7 +43,8 @@ interface JavaScript {
   String edition();                   // "statia" in ANA : STATIA (ANA's big sister), "" otherwise
   String platform();                  // "ios" on iPhone / iPad (the page says), "android" otherwise
   void iphoneLink(boolean on);         // Android: receive the iPhone's notifications over Bluetooth. iOS: connect to Android ANA
-  String iphoneState();                // what that link is doing, in words ("Off" when off)
+  String iphoneState();
+  String iphoneTimes();                // "Linked 2 h 14 m · last notification 3 min ago" ("" when not linked)                // what that link is doing, in words ("Off" when off)
   void copyText(String t);             // to the clipboard (the reader's COPY)
   boolean iphoneDismiss(String key);  // clear that notification on the iPhone (iOS: through ANA on Android); false if not possible
   void radarOn(boolean on);            // RADAR: scan for nearby ANA devices (and beacon this one)
@@ -53,6 +54,14 @@ interface JavaScript {
   boolean walletBusy();                // WATCH: checking right now
   void walletRefresh();                // WATCH: check every wallet now
   String lessonsText();                // LESSONS: one line per coin a lesson taught ANA (id, name, ticker, version, servers)
+  String billsText();                  // BILLS: "open TAB eFLEX-from-bills TAB all"
+  void billsOpen();
+  void chatOpen();
+  String chatList();                   // CHATNOTE: one line per message, oldest first: mine \t name \t key id \t age s \t route \t text
+  void chatWrite();
+  void findAdd();                      // iPhone FIND (experimental): type any app name, it becomes a tile
+  void findRemove(String name);
+  void chatClear(String key);          // CHATNOTE: forget one person's messages                    // CHATNOTE: the phone's own box to type in, then the route                     // CHATNOTE (experimental): messages, and send by Bluetooth / Wi-Fi / Internet / Light                    // BILLS: the list (new bill, paid bill, help, import)
   void lessonsOpen();                  // LESSONS: the list (remove one, or import a lesson)
   void walletAdd();                    // WATCH: the "watch an address" dialog
   void walletEdit(String id);          // WATCH: rename / copy / check / stop watching one wallet

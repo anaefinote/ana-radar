@@ -120,6 +120,7 @@ void draw() {
     }
     else if (tab == T_ARCHIVE) drawMaze();
     else if (tab == T_TIMELINE) drawTimeline2();
+    else if (tab == T_RADAR) drawRadar();
     else drawSettings2();
     drawReader();                      // a notification being read (Reader.pde), over the screen
     drawFlexChip();                    // FLEX: the chip at the top, and the wallet when it's open (Flex.pde)
@@ -442,6 +443,7 @@ void mouseReleased() {
       if (tab == T_PULSE) pulseTap(mouseX, mouseY);
       else if (tab == T_ARCHIVE) mazeTap(mouseX, mouseY);
       else if (tab == T_TIMELINE) timelineTap(mouseX, mouseY);
+      else if (tab == T_RADAR) radarTap(mouseX, mouseY);
       else settingsTap(mouseX, mouseY);
     }
     else if (tab == T_TIMELINE && onCalendar(pressX, pressY)) timelineSwipe(mouseX - pressX);
@@ -463,7 +465,7 @@ void mouseReleased() {
 
 // the flat screens: Settings always; Pulse / Archive / Timeline when the control ball is off
 boolean flatTab() {
-  return tab == T_SETTINGS || (!ballOn && tab != T_APPIFY);
+  return tab == T_SETTINGS || tab == T_RADAR || (!ballOn && tab != T_APPIFY);
 }
 
 void setTab(int t) {
@@ -471,6 +473,10 @@ void setTab(int t) {
   readerE = null;
   if (tab == T_PULSE) pulseSeen = countToday();
   if (t == T_SETTINGS) setPicking = false;
+  if (js != null && tab != t) {                 // RADAR scans only while its tab is open
+    if (tab == T_RADAR) js.radarOn(false);
+    if (t == T_RADAR) js.radarOn(true);
+  }
   tab = t;
   guiDirty = true;
   spin();
@@ -506,6 +512,7 @@ void keyPressed() {
   if (key == '3') t = T_APPIFY;
   if (key == '4') t = T_TIMELINE;
   if (key == '5') t = T_SETTINGS;
+  if (key == '6') t = T_RADAR;
   if (t >= 0 && t != tab) setTab(t);
   if (tab == T_ARCHIVE && (key == '+' || key == '=')) mazeDive(1);      // desktop: deeper (pinch out on the phone)
   if (tab == T_ARCHIVE && key == '-') mazeDive(-1);                      // up toward the surface

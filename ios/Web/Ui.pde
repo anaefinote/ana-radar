@@ -57,7 +57,7 @@ boolean frameWanted() {
   int sig = entries.size() * 31 + tab * 7 + watch.size() * 131 + (filterOn ? 1 : 0) + status.length() * 1009 + skin * 3;
   if (sig != frameSig) { frameSig = sig; poke(); }
   if (tab == T_RADAR) return true;     // RADAR sweeps continuously while it's open
-  if (mousePressed || now - lastInputAt < 1500 || now - appMsgAt < 2600 || now - iconWaitAt < 3000) return true;
+  if (mousePressed || now - lastInputAt < 1500 || now - appMsgAt < 2600 || now - iconWaitAt < 3000 || chatOn) return true;
   return now - lastDrawAt >= idleInterval();
 }
 

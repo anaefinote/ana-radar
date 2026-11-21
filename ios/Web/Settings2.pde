@@ -29,7 +29,7 @@ class SetRow {
 final int R_ACCESS = 1, R_USAGE = 2, R_SCAN = 3, R_MANUAL = 4, R_ARM = 5, R_BALL = 6, R_SKIN = 7, R_BRT = 8,
           R_PICK = 9, R_ONLYPICKED = 10, R_LOG = 11, R_CAPTURE = 12, R_RETENTION = 13, R_EFABOUT = 14,
           R_FEVENT = 15, R_FTEXT = 16, R_FREMIND = 17, R_ADDREM = 18, R_EFSTART = 19, R_EFFULL = 20, R_RESTRICT = 21, R_IPHONE = 22,
-          R_WADD = 23, R_WREFRESH = 24, R_WCLOSE = 25, R_LESSONS = 26, R_WALLET = 1000;   // R_WALLET + n: the n-th wallet card
+          R_WADD = 23, R_WREFRESH = 24, R_WCLOSE = 25, R_LESSONS = 26, R_CHAT = 27, R_TILEPLACE = 29, R_WALLET = 1000;   // R_WALLET + n: the n-th wallet card
 boolean iphoneOn = false;          // the iPhone <-> Android Bluetooth link (pref "iphone")
 String iphoneSaid = "";
 int sdkInt = -1;                 // Android's version (API level); -1 until asked
@@ -171,6 +171,7 @@ void drawSettings2() {
   text(ef ? "The archive of every notification" : "Access Novera Analytics", FX(244), y + 132 * fk);
 
   y += 200 * fk;
+  if (!ef) y = drawPromises(y);          // ANA's promises, under the version card
   if (ef) {
     y = setSection("Capture", y, #4DA3FF);
     y = setGroup(y, 2);
@@ -229,18 +230,21 @@ void drawSettings2() {
 
     // iPhone notifications over Bluetooth: Android ANA is the iPhone's "watch"; ANA on the iPhone connects to it
     y = setSection(onIOS ? "Android" : "iPhone", y, #4DA3FF);
-    y = setGroup(y, 1);
+    y = setGroup(y, 2);
     String ist = js != null ? js.iphoneState() : "Off";
     if (iphoneOn && !ist.equals(iphoneSaid)) { iphoneSaid = ist; appMsg = ist; appMsgAt = millis(); }   // the whole message, as a toast
-    setRowToggle(R_IPHONE, y, 0, onIOS ? "Connect to Android ANA" : "iPhone notifications", iphoneOn ? ist : onIOS ? "Share this iPhone's notifications with ANA on Android" : "Over Bluetooth: this device acts as the iPhone's watch", iphoneOn, color(77, 163, 255));
-    y += 100 * fk + 30 * fk;
+    String itm = iphoneOn && js != null ? js.iphoneTimes() : "";      // LINK TIME, while linked
+    setRowToggle(R_IPHONE, y, 0, onIOS ? "Connect to Android ANA" : "iPhone notifications", iphoneOn ? (itm.length() > 0 ? itm : ist) : onIOS ? "Share this iPhone's notifications with ANA on Android" : "Over Bluetooth: this device acts as the iPhone's watch", iphoneOn, color(77, 163, 255));
+    setRowValue(R_CHAT, y, 1, "CHATNOTE (experimental)", "Say hello: Bluetooth, Wi-Fi, Internet, Light", "", true, color(245, 185, 66));
+    y += 2 * 100 * fk + 30 * fk;
 
     y = setSection("Display", y, #8B6CFF);
-    y = setGroup(y, 3);
+    y = setGroup(y, 4);
     setRowToggle(R_BALL, y, 0, "Control ball", "The 3D ball on Pulse, Archive and Timeline", ballOn, color(120, 160, 255));
     setRowValue(R_SKIN, y, 1, "Ball skin", "Tap to change", skinName[skin], false, color(255, 120, 160));
     setRowValue(R_BRT, y, 2, "Ball brightness", "Tap to change", round(brtVal * 100) + "%", false, color(255, 200, 80));
-    y += 3 * 100 * fk + 30 * fk;
+    setRowValue(R_TILEPLACE, y, 3, "New tiles go", "FIND and CHATNOTE: tap to change", tilePlaceName[tilePlace], false, color(245, 185, 66));
+    y += 4 * 100 * fk + 30 * fk;
 
     {                                               // picking apps: Android, and the iPhone's own apps (relayed back by Android ANA)
       y = setSection("Apps", y, #3DDC97);
@@ -291,11 +295,11 @@ void setRowIcon(int id, float cx, float cy, color c) {
   else if (id == R_SCAN || id == R_WREFRESH) icoRefresh(cx, cy, s, c);
   else if (id == R_WADD || id == R_LESSONS) icoPencil(cx, cy, s, c);
   else if (id == R_WCLOSE) icoHistory(cx, cy, s, c);
-  else if (id == R_MANUAL) icoPencil(cx, cy, s, c);
+  else if (id == R_MANUAL || id == R_CHAT) icoPencil(cx, cy, s, c);
   else if (id == R_ARM) icoTarget(cx, cy, s, c);
   else if (id == R_RESTRICT) icoEye(cx, cy, s, c);
   else if (id == R_IPHONE) icoBell(cx, cy, s, c);
-  else if (id == R_BALL) icoBall(cx, cy, s, c);
+  else if (id == R_BALL || id == R_TILEPLACE) icoBall(cx, cy, s, c);
   else if (id == R_SKIN) icoPalette(cx, cy, s, c);
   else if (id == R_BRT) icoSun(cx, cy, s, c);
   else if (id == R_PICK) icoGrid(cx, cy, s * 0.9, c);
@@ -305,6 +309,7 @@ void setRowIcon(int id, float cx, float cy, color c) {
   else if (id == R_FEVENT || id == R_FREMIND || id == R_ADDREM) icoClock(cx, cy, s, c);
   else if (id == R_FTEXT) icoCal(cx, cy, s, c);
   else if (id == R_EFSTART || id == R_EFFULL) icoBall(cx, cy, s, c);
+  else if (id == F_BILLS) icoCal(cx, cy, s, c);
   else if (id >= R_GPOOLS && id <= 58) gstIcon(id, cx, cy, s, c);
   else icoInfo(cx, cy, s, c);
 }
@@ -479,6 +484,8 @@ void settingsAct(int id) {
   else if (id == R_USAGE) { if (js != null) js.openUsageAccess(); }
   else if (id == R_SCAN) act(C_SCAN);
   else if (id == R_MANUAL) act(C_MANUAL);
+  else if (id == R_CHAT) chatOpen();
+  else if (id == R_TILEPLACE) { tilePlace = (tilePlace + 1) % 6; savePref("tileplace", "" + tilePlace); appSig = ""; }
   else if (id == R_ARM) act(armed ? C_ARMOFF : C_ARMON);
   else if (id == R_IPHONE) {
     iphoneOn = !iphoneOn;
@@ -747,4 +754,29 @@ float drawWatch(float y) {
   textAlign(LEFT, TOP);
   text(t, FX(70), y + 24 * fk, 712 * fk, th + 10 * fk);
   return y + th + 80 * fk;
+}
+
+
+// ---------------------------------------------------------------- ANA's promises (the ZF rule and the money rule)
+// Shown on the ANA settings page, always: nobody should ever be unsure.
+final String[] PROMISES = {
+  "Zero friction: keep doing what you already do. ANA fits around you.",
+  "Your notifications are your business. They stay on your phone.",
+  "Novvera never touches money. Not yours, not your group's, not ever.",
+  "No ads, ever. Your data is never sold."
+};
+
+float drawPromises(float y) {
+  float h = 70 * fk + PROMISES.length * 44 * fk;
+  glassCard(FX(38), y, 776 * fk, h, 34 * fk, color(61, 220, 151));
+  textAlign(LEFT, BASELINE);
+  fill(#3DDC97);
+  textSizeQ(19 * fk);
+  boldTextF("ANA'S PROMISES", FX(70), y + 42 * fk);
+  textSizeQ(20 * fk);
+  for (int i = 0; i < PROMISES.length; i++) {
+    fill(i == 2 ? #FFFFFF : #C9D3E6);
+    text(fitText((i + 1) + "   " + PROMISES[i], 712 * fk), FX(70), y + 84 * fk + i * 44 * fk);
+  }
+  return y + h + 30 * fk;
 }

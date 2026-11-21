@@ -27,6 +27,12 @@ float fAll = 0;
 int fTotAt = -100000, fSampleAt = -100000, fStartAt = -1;
 String fMyKey = "";
 final int F_GIFT = 56, F_PROOF = 57, F_HIDE = 58, F_SHOWSHARE = 59;   // rows on the FLEX page; icons: gstIcon (Gst.pde)
+final int F_BILLS = 60;                // BILLS: paying bills earns eFLEX (native: Bills / BillCore)
+int fBills = 0, fBillsOpen = 0, fBillsAll = 0;   // eFLEX earned from bills, bills still open, all bills
+int fGoal = -1;                        // the 30-day settlement goal, % (-1: no bills yet)
+
+// eFLEX earned: holding (counted at midnight) + bills paid, reported and helped with
+int flexEarned() { return fEarned + fBills; }
 
 class LEntry {
   int i, amt;
@@ -266,6 +272,9 @@ void flexTick() {
     if (t.length > 1) { fAll = gNum(t[0], 0); gAll = fAll; gFront = gNum(t[1], 0); }
     fShared = t.length > 2 && t[2].equals("1");
     fAllP = t.length > 3 ? min(fAll, gNum(t[3], 0)) : 0;
+    String[] b = split(js.billsText(), "\t");     // BILLS: open, eFLEX, all
+    if (b.length > 2) { fBillsOpen = int(gNum(b[0], 0)); fBills = int(gNum(b[1], 0)); fBillsAll = int(gNum(b[2], 0)); }
+    fGoal = b.length > 3 ? int(gNum(b[3], -1)) : -1;
   }
   if (millis() - fStartAt < 20000 || millis() - fSampleAt < 60000) return;   // let the wallets load first
   fSampleAt = millis();
@@ -291,7 +300,7 @@ void flexTick() {
 // ---------------------------------------------------------------- the FLEX pill and page (Settings2.pde)
 // The FLEX pill's label: your eFLEX, hidden (••••) when you ask or while the screen is shared
 String flexPillLabel() {
-  return "FLEX " + (fHide || fMasked() ? "••••" : fN(fEarned));
+  return "FLEX " + (fHide || fMasked() ? "••••" : fN(flexEarned()));
 }
 
 // (the floating pill is gone: FLEX lives in Settings now; these stay so older hooks do nothing)
@@ -307,7 +316,7 @@ float fCard(float y, float h, color c) {
 
 // the Flex wallet, as a Settings page (from FY(460), under the pills)
 float drawFlexPage(float y) {
-  int given = flexGiven(), avail = max(0, fEarned - given);
+  int given = flexGiven(), avail = max(0, flexEarned() - given);
   fCard(y, 200 * fk, FGOLD);
   textAlign(LEFT, BASELINE);
   fill(FGOLD);
@@ -315,10 +324,10 @@ float drawFlexPage(float y) {
   boldTextF("eFLEX EARNED", FX(70), y + 40 * fk);
   fill(#FFFFFF);
   textSizeQ(56 * fk);
-  boldTextF(fMasked() ? "••••" : fN(fEarned), FX(70), y + 104 * fk);
+  boldTextF(fMasked() ? "••••" : fN(flexEarned()), FX(70), y + 104 * fk);
   fill(#9AA6C0);
   textSizeQ(19 * fk);
-  text("The ideal: 1 eFLEX per $10 a day. Proven wallets reach it.", FX(70), y + 140 * fk);
+  text("The ideal: 1 eFLEX per $10 a day. Proven wallets reach it." + (fBills > 0 && !fMasked() ? "  Bills: " + fN(fBills) : ""), FX(70), y + 140 * fk);
   text("+" + fN(flexToday()) + " building today (counts at midnight)  ·  " + fN(avail) + " to give", FX(70), y + 172 * fk);
   y += 220 * fk;
 
@@ -350,6 +359,15 @@ float drawFlexPage(float y) {
   text("FLEX points you buy · from November 30", FX(780), y + 90 * fk);
   textAlign(LEFT, BASELINE);
   y += 160 * fk;
+
+  y = setGroup(y, 1);                    // BILLS
+  setRowValue(F_BILLS, y, 0, "Bills", "Settle up, get 30 days ahead, help others", fGoal < 0 ? "Earn eFLEX" : fGoal >= 100 ? "30 days ahead" : fGoal + "% to 30 days", true, GGREEN);
+  y += 100 * fk + 14 * fk;
+  fill(#9AA6C0);                         // said plainly, every time bills show
+  textAlign(LEFT, BASELINE);
+  textSizeQ(18 * fk);
+  text("Novvera never touches money. You pay your billers yourself.", FX(60), y + 22 * fk);
+  y += 60 * fk;
 
   y = setGroup(y, 4);
   setRowValue(F_GIFT, y, 0, "Gift eFLEX", "Through a GST group's ledger", "", true, FGOLD);
@@ -388,6 +406,7 @@ boolean flexAct(int id) {
   if (id == F_HIDE) { fHide = !fHide; flexSave(); return true; }
   if (id == F_SHOWSHARE) { fShowShared = !fShowShared; flexSave(); return true; }
   if (id == F_GIFT) { flexStart("fgift"); return true; }
+  if (id == F_BILLS) { if (js != null) js.billsOpen(); return true; }
   if (id == F_PROOF) { flexStart("fproof"); return true; }
   return false;
 }
@@ -428,9 +447,9 @@ void flexAfterGroup(String what, String gid) {
   if (what.equals("fproof")) {
     int days = fHist.size() + (fCount > 0 ? 1 : 0);
     String when = gNow();
-    String sig = js.flexSign("PROOF|" + g.id + "|" + gMyId + "|" + fEarned + "|" + days + "|" + when);
-    String row = gNewId("p") + "\tPROOF\t" + g.id + "\t" + gMyId + "\t" + gClean(gMyName) + "\t" + when + "\t" + fEarned + "\t" + days + "\t" + sig + "\t";
-    gSend(g, "eFLEX proof card", new String[] { row }, new String[] { gMyName + "'s eFLEX\t" + fN(fEarned) + " earned over " + days + " days, signed by their phone" });
+    String sig = js.flexSign("PROOF|" + g.id + "|" + gMyId + "|" + flexEarned() + "|" + days + "|" + when);
+    String row = gNewId("p") + "\tPROOF\t" + g.id + "\t" + gMyId + "\t" + gClean(gMyName) + "\t" + when + "\t" + flexEarned() + "\t" + days + "\t" + sig + "\t";
+    gSend(g, "eFLEX proof card", new String[] { row }, new String[] { gMyName + "'s eFLEX\t" + fN(flexEarned()) + " earned over " + days + " days, signed by their phone" });
     return;
   }
   String ids = "", names = "";
@@ -456,7 +475,7 @@ boolean flexAnswered(String kind, String ctx, String[] v) {
     int n = int(gNum(v1, -1));
     GGroup g = gFind(c[0]);
     if (g == null || n < 0 || n >= ids.length) return true;
-    int avail = max(0, fEarned - flexGiven());
+    int avail = max(0, flexEarned() - flexGiven());
     gAsk("famount", g.id + "|" + ids[n], "Gift eFLEX to " + gNameOf(g, ids[n]),
          "You have " + fN(avail) + " eFLEX to give. It shows as gifted eFLEX for them; your earned score stays yours. Final once everyone in " + g.name + " holds the same ledger.",
          "Amount (eFLEX)||number");
@@ -464,7 +483,7 @@ boolean flexAnswered(String kind, String ctx, String[] v) {
     String[] c = split(ctx, "|");
     GGroup g = gFind(c[0]);
     int amt = int(gNum(v1, 0));
-    int avail = max(0, fEarned - flexGiven());
+    int avail = max(0, flexEarned() - flexGiven());
     if (g == null || amt <= 0) return true;
     if (amt > avail) { appMsg = "Only " + fN(avail) + " eFLEX to give"; appMsgAt = millis(); return true; }
     if (g.conflict.length() > 0) { appMsg = g.name + "'s ledger has a conflict: transfers are frozen"; appMsgAt = millis(); return true; }

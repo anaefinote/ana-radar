@@ -20,6 +20,8 @@
 // Getting an app's icon and opening it is Java (Bridge: appIcon, appLabel, appCategory, launchApp).
 
 final int A_PICKED = 0, A_ALL = 1, A_SELECTED = 2, A_ACTIVE = 3;
+boolean appSpin = false;       // the finger went down somewhere on APPify: a drag turns the globe
+boolean peopleGlobe = false;   // CHATNOTE Orbit (Chat.pde): this same globe, people as the tiles
 int appMode = A_PICKED;
 String[] appModeName = { "PICKED", "ALL", "SELECTED", "ACTIVE" };
 boolean usageNeeded = false;            // ACTIVE without Usage access
@@ -86,6 +88,8 @@ void appifyRefresh() {
   int nSel = selectedCount();
   String sig = appMode + "/" + entries.size() + "/" + nSel + "/" + watch.size() + "/" + filterOn + "/" + catFilter;
   if (appMode == A_ACTIVE) sig += "/" + floor(millis() / (usageNeeded ? 2000.0 : 20000.0));   // usage moves on its own
+  if (peopleGlobe) sig = "P/" + chatRaw;
+  if (onIOS && appMode == A_ACTIVE && !peopleGlobe && js != null) sig = "F/" + js.pref("finds");   // FIND: a new name refills the globe
   if (sig.equals(appSig)) return;
   appSig = sig;
 
@@ -93,7 +97,7 @@ void appifyRefresh() {
   int[] cnt = new int[40];
   int[] ago = new int[40];
   usageNeeded = false;
-  if (appMode == A_ACTIVE) {
+  if (appMode == A_ACTIVE && !peopleGlobe && !onIOS) {
     if (js != null && js.usageOk()) {
       String[] lines = split(js.usageToday(), "\n");
       for (int i = 0; i < lines.length && pk.size() < 40; i++) {
@@ -106,7 +110,7 @@ void appifyRefresh() {
     }
     else usageNeeded = (js != null);
   }
-  for (int i = 0; i < entries.size() && appMode != A_ACTIVE; i++) {
+  for (int i = 0; i < entries.size() && appMode != A_ACTIVE && !peopleGlobe; i++) {
     Entry e = (Entry) entries.get(i);
     if (e.src.equals("SYS") || e.src.equals("MANUAL")) continue;
     if (e.pkg.equals("manual") || e.pkg.startsWith("com.novera.ana")) continue;
@@ -128,6 +132,14 @@ void appifyRefresh() {
     else cnt[at]++;
   }
 
+  if (onIOS && appMode == A_ACTIVE && !peopleGlobe && js != null) {   // FIND (experimental): the names typed in
+    String[] fs = split(js.pref("finds"), '\n');
+    for (int i = 0; i < fs.length && pk.size() < 40; i++) if (trim(fs[i]).length() > 0) { cnt[pk.size()] = 1; pk.add("find:" + trim(fs[i])); }
+  }
+  if (peopleGlobe) {                                // CHATNOTE: the people who wrote, newest first
+    ArrayList ps = chatPeople();
+    for (int i = 0; i < ps.size() && pk.size() < 40; i++) { cnt[pk.size()] = chatCount((String) ps.get(i)); pk.add("chat:" + ps.get(i)); }
+  }
   // every app for this source, with its name and category (cheap; icons come later)
   appsAll.clear();
   for (int i = 0; i < pk.size(); i++) {
@@ -142,7 +154,7 @@ void appifyRefresh() {
   ArrayList onBall = new ArrayList();
   for (int i = 0; i < appsAll.size(); i++) {
     AppIcon a = (AppIcon) appsAll.get(i);
-    if (catFilter.length() == 0 || a.cat.equals(catFilter)) onBall.add(a);
+    if (peopleGlobe || catFilter.length() == 0 || a.cat.equals(catFilter)) onBall.add(a);
   }
   if (onBall.size() == 0 && catFilter.length() > 0) {    // that category has gone: back to all
     catFilter = "";
@@ -151,17 +163,13 @@ void appifyRefresh() {
 
   apps.clear();
   int n = onBall.size();
+  placeAxis = null;
+  placeSetup(n);                                   // FIND / people: the newest tile goes where Settings says
   for (int i = 0; i < n; i++) {
     AppIcon a = (AppIcon) onBall.get(i);
     // even spread over the ball (Fibonacci sphere); the first (busiest-recent) app faces you
-    float y = n == 1 ? 0 : 1 - 2 * (i + 0.5) / n;
-    float r = sqrt(max(0, 1 - y * y));
-    float phi = i * 2.39996;
-    a.px = sin(phi) * r;
-    a.py = y * 0.92;
-    a.pz = cos(phi) * r;
-    float l = sqrt(a.px * a.px + a.py * a.py + a.pz * a.pz);
-    a.px /= l; a.py /= l; a.pz /= l;
+    float[] sp = tileSpot(i, n);
+    a.px = sp[0]; a.py = sp[1]; a.pz = sp[2];
     // tile directions: right = up x p, down = p x right
     float rx = a.pz, ry = 0, rz = -a.px;
     float rl = sqrt(rx * rx + rz * rz);
@@ -199,6 +207,62 @@ AppIcon appFor(String pkg) {
 }
 
 // icons and names come from the phone, one or two per frame, and arrive in the background
+// Settings: where a new tile goes (FIND and CHATNOTE people: the newest is tile 0)
+int tilePlace = 1;                     // 0 random, 1 front, 2 right, 3 left, 4 top, 5 bottom
+String[] tilePlaceName = { "Random", "Front", "Right", "Left", "Top", "Bottom" };
+float[] placeAxis = null;              // this refill's turn (axis x, y, z, angle), or null
+int placeN = -1;
+
+// a tile's place on the ball (unit sphere, ball space): APPify's spread, turned for the newest tile's spot
+float[] tileSpot(int i, int n) {
+  float y = n == 1 ? 0 : 1 - 2 * (i + 0.5) / n;
+  float r = sqrt(max(0, 1 - y * y));
+  float phi = i * 2.39996;
+  if (n > 1 && n <= 8 && (peopleGlobe || appMode == 4 || (onIOS && appMode == A_ACTIVE))) {   // FIND / people: a few tiles, none behind another
+    y = i % 2 == 0 ? 0.32 : -0.32;
+    r = sqrt(1 - y * y);
+    phi = TWO_PI * i / n;
+  }
+  float px = sin(phi) * r;
+  float py = y * 0.92;
+  float pz = cos(phi) * r;
+  float l = sqrt(px * px + py * py + pz * pz);
+  px /= l; py /= l; pz /= l;
+  float[] p = { px, py, pz };
+  if (placeAxis != null) p = turnBy(p, placeAxis);
+  return p;
+}
+
+boolean placeMode() { return peopleGlobe || appMode == 4 || (onIOS && appMode == A_ACTIVE); }
+
+// before a refill: the turn that takes tile 0 to the chosen spot on screen (rot's inverse = its transpose)
+void placeSetup(int n) {
+  placeAxis = null;
+  if (!placeMode() || n < 1) return;
+  float[] d;
+  if (tilePlace == 0) { float t = random(TWO_PI), u = random(-0.7, 0.7); d = new float[] { cos(t) * sqrt(1 - u * u), u, abs(sin(t)) * sqrt(1 - u * u) + 0.2 }; }
+  else if (tilePlace == 2) d = new float[] { 0.85, 0, 0.53 };
+  else if (tilePlace == 3) d = new float[] { -0.85, 0, 0.53 };
+  else if (tilePlace == 4) d = new float[] { 0, -0.75, 0.66 };
+  else if (tilePlace == 5) d = new float[] { 0, 0.75, 0.66 };
+  else d = new float[] { 0, 0, 1 };
+  float[] t = { rot[0] * d[0] + rot[3] * d[1] + rot[6] * d[2], rot[1] * d[0] + rot[4] * d[1] + rot[7] * d[2], rot[2] * d[0] + rot[5] * d[1] + rot[8] * d[2] };
+  float tl = sqrt(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
+  t[0] /= tl; t[1] /= tl; t[2] /= tl;
+  float[] p0 = tileSpot(0, n);
+  float ax = p0[1] * t[2] - p0[2] * t[1], ay = p0[2] * t[0] - p0[0] * t[2], az = p0[0] * t[1] - p0[1] * t[0];
+  float s = sqrt(ax * ax + ay * ay + az * az), c = p0[0] * t[0] + p0[1] * t[1] + p0[2] * t[2];
+  if (s < 0.0001) { if (c < 0) placeAxis = new float[] { 0, 1, 0, PI }; return; }
+  placeAxis = new float[] { ax / s, ay / s, az / s, atan2(s, c) };
+}
+
+float[] turnBy(float[] v, float[] q) {   // Rodrigues: v turned about axis q[0..2] by q[3]
+  float c = cos(q[3]), s = sin(q[3]);
+  float d = q[0] * v[0] + q[1] * v[1] + q[2] * v[2];
+  float cx = q[1] * v[2] - q[2] * v[1], cy = q[2] * v[0] - q[0] * v[2], cz = q[0] * v[1] - q[1] * v[0];
+  return new float[] { v[0] * c + cx * s + q[0] * d * (1 - c), v[1] * c + cy * s + q[1] * d * (1 - c), v[2] * c + cz * s + q[2] * d * (1 - c) };
+}
+
 void appifyLoadIcons() {
   int asked = 0;
   for (int i = 0; i < apps.size() && asked < 2; i++) {
@@ -207,7 +271,8 @@ void appifyLoadIcons() {
       a.asked = true;
       asked++;
       appInfo(a);
-      if (js != null) {
+      if (a.pkg.startsWith("chat:")) a.img = chatTile(a.pkg.substring(5), a.label);   // CHATNOTE: a person's colours
+      else if (js != null) {
         String d = js.appIcon(a.pkg);
         if (d.length() > 0) a.img = loadImage(d);
       }
@@ -222,6 +287,8 @@ void appifyLoadIcons() {
 void appInfo(AppIcon a) {
   if (a.infoAsked) return;
   a.infoAsked = true;
+  if (a.pkg.startsWith("chat:")) { a.label = chatNameOf(a.pkg.substring(5)); a.cat = "CHATNOTE"; return; }
+  if (a.pkg.startsWith("find:")) { a.label = a.pkg.substring(5); a.cat = "App Store"; return; }   // FIND
   if (js != null) {
     a.label = js.appLabel(a.pkg);
     a.cat = js.appCategory(a.pkg);
@@ -401,7 +468,7 @@ void drawAppify() {
   appifyPhysics();
 
   image(appBgImg, 0, 0);
-  drawAppHeader();
+  if (!peopleGlobe) drawAppHeader();
   drawBubbles();
   drawOrbit(false);
   drawGlassBack();
@@ -423,14 +490,18 @@ void drawAppify() {
     textSizeQ(24 * ak);
     String why = appMode == A_PICKED ? "No picked apps yet\n(Settings)" : appMode == A_SELECTED ? "No cards selected\n(Archive)" : "No notifications yet";
     if (appMode == A_ACTIVE) why = usageNeeded ? "Tap here to allow\nUsage access for ANA" : js == null ? "ACTIVE is phone only" : "No apps used yet today";
+    if (peopleGlobe) why = "No one has written yet";
+    if (onIOS && appMode == A_ACTIVE && !peopleGlobe) why = "Tap FIND again\nto look up any app";
     text(why, AX(bCX), AY(bCY));
   }
-  drawAppCount();
-  drawGauges();
-  drawFlow();
-  drawLatest();
-  if (catFilter.length() > 0) drawFilterPill();
-  if (showList) drawAppList();
+  if (!peopleGlobe) {                              // CHATNOTE Orbit: the conversation sits here instead
+    drawAppCount();
+    drawGauges();
+    drawFlow();
+    drawLatest();
+    if (catFilter.length() > 0) drawFilterPill();
+    if (showList) drawAppList();
+  }
   if (selApp != null) drawAppInfo(selApp);
   if (millis() - appMsgAt < 2500) {
     fill(#F5B942);
@@ -493,7 +564,7 @@ void drawAppHeader() {
     rrectLine(cx, cy, cw, chh, chh * 0.5);
     noStroke();
     fill(on ? #FFFFFF : #8A93A6);
-    text(appModeName[i], cx + cw * 0.5, cy + chh * 0.5 - 1 * ak);
+    text(onIOS && i == A_ACTIVE ? "FIND" : appModeName[i], cx + cw * 0.5, cy + chh * 0.5 - 1 * ak);   // iPhone: FIND (experimental) where ACTIVE can't be
   }
 }
 
@@ -987,6 +1058,7 @@ void appifyPressed(float mx, float my) {
   if (listDragA) { appDrag = false; return; }
   appDrag = dist(mx, my, AX(bCX), AY(bCY)) < ballR * ak * 1.15;
   if (appDrag) { spinVX = 0; spinVY = 0; }
+  appSpin = true;                                  // a drag that starts anywhere turns the globe (as the Archive's balls)
 }
 
 void appifyDragged(float mx, float my) {
@@ -996,7 +1068,8 @@ void appifyDragged(float mx, float my) {
     appLastY = my;
     return;
   }
-  if (!appDrag) return;
+  if (!appDrag && !appSpin) return;
+  if (!appMoved) return;                           // a tap stays a tap: turning starts once the finger moves
   float R = ballR * ak;
   float dx = (mx - appLastX) / R, dy = (my - appLastY) / R;
   rotScreen(dx, dy);
@@ -1010,6 +1083,7 @@ void appifyReleased(float mx, float my) {
   boolean wasDrag = appDrag;
   appDrag = false;
   if (appMoved) return;                            // a flick: keeps spinning (spinVX/VY)
+  if (peopleGlobe) { peopleRelease(mx, my, wasDrag); return; }   // CHATNOTE Orbit
   // the apps list takes taps first while it's open
   if (showList) {
     if (overListClose(mx, my)) { showList = false; return; }
@@ -1048,9 +1122,9 @@ void appifyReleased(float mx, float my) {
   spinVX = 0.0035;
   spinVY = 0;
   int m = modeAt(mx, my);
-  if (m == A_ACTIVE && onIOS) {                    // iOS keeps app usage private
-    appMsg = "ACTIVE needs Android: iOS keeps app usage private";
-    appMsgAt = millis();
+  if (m == A_ACTIVE && onIOS) {                    // iOS keeps app usage private: the pill is FIND (experimental)
+    if (appMode == A_ACTIVE && js != null) js.findAdd();       // FIND again: type a name
+    else { appMode = A_ACTIVE; appSig = ""; spinVX = 0.12; savePref("appmode", "" + A_ACTIVE); }
     return;
   }
   if (m >= 0) {
@@ -1084,7 +1158,8 @@ void appifyReleased(float mx, float my) {
       }
       return;
     }
-    if (bi == 0 && onIOS) clearApp(selApp);                      // iOS: CLEAR straight away (no close-app toggle)
+    if (bi == 0 && selApp.pkg.startsWith("find:")) { if (js != null) js.findRemove(selApp.pkg.substring(5)); selApp = null; appSig = ""; }   // FIND: CLEAR takes the tile away
+    else if (bi == 0 && onIOS) clearApp(selApp);                      // iOS: CLEAR straight away (no close-app toggle)
     else if (bi == 0) { loadClearPrefs(); clearFor = selApp; }
     else if (bi == 1 && !onIOS) stopApp(selApp);                 // iOS can't stop another app
     else if (bi == 2) openApp(selApp);
@@ -1144,6 +1219,7 @@ float infoY() { return AY(78); }
 float infoW() { return 458 * ak; }
 float infoH() { return 172 * ak; }
 String[] infoBtn = { "CLEAR", "STOP", "OPEN" };
+String[] peopleBtn = { "CLEAR", "CLOSE", "CHAT" };   // CHATNOTE Orbit
 String[] clearBtn = { "BACK", "", "CLEAR" };
 
 // CLEAR has two toggles (kept between uses): the app's notifications in the shade, and the app itself
@@ -1214,8 +1290,8 @@ void drawAppInfo(AppIcon a) {
   // CLEAR / STOP / OPEN
   for (int i = 0; i < 3; i++) {
     float[] br = infoBtnRect(i);
-    String lbl = clearing() ? clearBtn[i] : infoBtn[i];
-    if (lbl.length() == 0 || (onIOS && !clearing() && i == 1)) continue;   // iOS: no STOP
+    String lbl = peopleGlobe ? peopleBtn[i] : clearing() ? clearBtn[i] : infoBtn[i];
+    if (lbl.length() == 0 || (onIOS && !clearing() && !peopleGlobe && i == 1)) continue;   // iOS: no STOP
     color bc = clearing() ? (i == 0 ? color(120, 135, 160) : (clearN || clearA) ? color(77, 163, 255) : color(70, 80, 100))
              : i == 0 ? color(77, 163, 255) : i == 1 ? color(255, 95, 95) : gc;
     fill(red(bc) * 0.3, green(bc) * 0.3, blue(bc) * 0.3, 230 * fade);
@@ -1260,6 +1336,16 @@ void drawAppInfo(AppIcon a) {
   text(name, tx, y + 44 * ak);
   text(name, tx + 0.8 * ak, y + 44 * ak);
 
+  if (peopleGlobe) {                               // CHATNOTE: the person and their last message
+    String pk = a.pkg.substring(5);
+    ChatMsg lm = chatLastFrom(pk);
+    fill(143, 163, 184, 255 * fade);
+    textSizeQ(17 * ak);
+    text(fitText("CHATNOTE  \u00b7  " + chatCount(pk) + " messages  \u00b7  sealed \u2713", tw), tx, y + 72 * ak);
+    fill(201, 211, 230, 255 * fade);
+    text(fitText(lm == null ? "" : chatTime(lm.age) + ":  " + lm.text, tw), tx, y + 100 * ak);
+    return;
+  }
   int nToday = 0, all = 0;
   Entry last = null;
   String td = today();

@@ -102,6 +102,7 @@ void draw() {
   if (!frameWanted()) return;                     // nothing can look different: keep the last frame
   lastDrawAt = millis();
   iconBudget = 2;
+  if (chatOn) { drawChat(); return; }          // CHATNOTE (Chat.pde) takes the whole screen while open
 
   if (!(tab == T_ARCHIVE && flatTab())) mazeLeave();   // the maze's GPU layer only shows on Archive
   if (tab == T_APPIFY) {               // APPify has its own screen (Appify.pde) above the bar
@@ -328,6 +329,7 @@ void act(int id) {
 
 void mousePressed() {
   poke();
+  if (chatOn) { chatPress(mouseX, mouseY); return; }
   pressX = mouseX;
   pressY = mouseY;
   lastMX = mouseX;
@@ -370,6 +372,7 @@ void mousePressed() {
 }
 
 void mouseDragged() {
+  if (chatOn) { poke(); chatDrag(mouseX, mouseY); return; }
   if (fOpen) return;                             // FLEX: the wallet doesn't scroll the screen under it
   poke();
   if (tab == T_APPIFY) {
@@ -417,6 +420,7 @@ void mouseDragged() {
 
 void mouseReleased() {
   poke();
+  if (chatOn) { chatRelease(mouseX, mouseY); return; }
   if (tab == T_APPIFY) {
     if (fOpen) { flexPanelTap(mouseX, mouseY); return; }                       // FLEX: the wallet takes every tap
     if (flexChipHit(pressX, pressY) && flexChipHit(mouseX, mouseY)) { fOpen = true; return; }
@@ -744,6 +748,7 @@ void loadPrefs() {
   if (es.length() > 0) efStart = constrain(int(es), 0, 2);
   efFull = js.pref("effull").equals("1");
   iphoneOn = js.pref("iphone").equals("1");
+  if (js.pref("tileplace").length() > 0) tilePlace = constrain(int(js.pref("tileplace")), 0, 5);
   mzLock = !js.pref("eflock").equals("0");
   String am = js.pref("appmode");
   if (am.length() > 0) appMode = constrain(int(am), 0, 3);

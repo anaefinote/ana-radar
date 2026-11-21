@@ -47,6 +47,9 @@ interface JavaScript {
   String iphoneTimes();                // "Linked 2 h 14 m · last notification 3 min ago" ("" when not linked)                // what that link is doing, in words ("Off" when off)
   void copyText(String t);             // to the clipboard (the reader's COPY)
   boolean iphoneDismiss(String key);  // clear that notification on the iPhone (iOS: through ANA on Android); false if not possible
+  void radarOn(boolean on);            // RADAR: scan for nearby ANA devices (and beacon this one)
+  int radarCount();                    // how many ANA devices are nearby right now
+  String radarPeers();                 // "count\tid8,rssi,age;..." strongest signal first
   String walletText();                 // WATCH (iPhone): the wallets and their activity, tab-separated lines
   boolean walletBusy();                // WATCH: checking right now
   void walletRefresh();                // WATCH: check every wallet now

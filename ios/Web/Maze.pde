@@ -768,6 +768,7 @@ void drawDepthGauge() {
 // pinch (from the page): ratio > 1 = fingers apart = zoom in. It zooms the ball under the fingers.
 void pinchStart() {
   poke();
+  if (chatOn) return;                              // CHATNOTE: chatPinch
   moved = true;
   dragMode = D_NONE;
   mzPinching = true;
@@ -779,6 +780,7 @@ void pinchStart() {
 
 void pinch(float ratio) {
   poke();
+  if (chatOn) { chatPinch(ratio); return; }
   if (tab != T_ARCHIVE || !flatTab()) return;
   int b = mzBall;
   mzZB[b] = constrain(mzZB[b] + log(max(0.2, ratio)) * 1.15, zMinB(b), zMaxB(b));
