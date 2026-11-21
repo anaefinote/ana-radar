@@ -83,12 +83,27 @@ void drawConstellation(float cx, float cy, float R, String mtx) {
   float[][] P = mdsClassic(D, n);
 
   float ox = P[0][0], oy = P[0][1];                    // centre on this phone (node 0)
+  float[][] C = new float[n][2];
+  for (int i = 0; i < n; i++) { C[i][0] = P[i][0]-ox; C[i][1] = P[i][1]-oy; }
+
+  // MDS is free up to rotation + mirror, so the raw solution spins/flips every frame. Lock this
+  // frame's orientation to the last one, then ease toward it — the shape settles instead of flying.
+  if (mdsPrev != null && mdsPrevN == n) {
+    C = mdsAlign(C, mdsPrev, n);
+    for (int i = 0; i < n; i++) {
+      C[i][0] = lerp(mdsPrev[i][0], C[i][0], 0.22);
+      C[i][1] = lerp(mdsPrev[i][1], C[i][1], 0.22);
+    }
+  }
+  mdsPrev = C; mdsPrevN = n;
+
   float maxr = 0.001;
-  for (int i = 0; i < n; i++) { float dx = P[i][0]-ox, dy = P[i][1]-oy; maxr = max(maxr, sqrt(dx*dx+dy*dy)); }
-  float sc = (R * 0.9) / maxr;
+  for (int i = 0; i < n; i++) maxr = max(maxr, sqrt(C[i][0]*C[i][0] + C[i][1]*C[i][1]));
+  float target = (R * 0.9) / maxr;
+  mdsScale = mdsScale <= 0 ? target : lerp(mdsScale, target, 0.18);   // smooth the zoom too
 
   float[] X = new float[n], Y = new float[n];
-  for (int i = 0; i < n; i++) { X[i] = cx + (P[i][0]-ox) * sc; Y[i] = cy + (P[i][1]-oy) * sc; }
+  for (int i = 0; i < n; i++) { X[i] = cx + C[i][0] * mdsScale; Y[i] = cy + C[i][1] * mdsScale; }
 
   stroke(77, 226, 196, 70);                            // the rails: edges between devices
   strokeWeight(2 * fk);
@@ -102,4 +117,37 @@ void drawConstellation(float cx, float cy, float R, String mtx) {
   }
   fill(255, 255, 255, 235);                            // this phone, at centre
   ellipse(X[0], Y[0], 12 * fk, 12 * fk);
+}
+
+// ---- orientation + smoothing state so the constellation settles instead of spinning
+float[][] mdsPrev = null;
+int mdsPrevN = 0;
+float mdsScale = 0;
+
+/** best-fit rotation (and optional mirror) of A onto B, matched by node index, both centred at origin */
+float[][] mdsAlign(float[][] A, float[][] B, int n) {
+  float[][] rot = mdsRotateToFit(A, B, n, false);
+  float[][] mir = mdsRotateToFit(A, B, n, true);
+  return mdsFit(mir, B, n) < mdsFit(rot, B, n) ? mir : rot;
+}
+float[][] mdsRotateToFit(float[][] A, float[][] B, int n, boolean mirror) {
+  float num = 0, den = 0;
+  for (int i = 0; i < n; i++) {
+    float ax = A[i][0], ay = mirror ? -A[i][1] : A[i][1];
+    num += ax * B[i][1] - ay * B[i][0];
+    den += ax * B[i][0] + ay * B[i][1];
+  }
+  float th = atan2(num, den), c = cos(th), s = sin(th);
+  float[][] R = new float[n][2];
+  for (int i = 0; i < n; i++) {
+    float ax = A[i][0], ay = mirror ? -A[i][1] : A[i][1];
+    R[i][0] = c * ax - s * ay;
+    R[i][1] = s * ax + c * ay;
+  }
+  return R;
+}
+float mdsFit(float[][] A, float[][] B, int n) {
+  float e = 0;
+  for (int i = 0; i < n; i++) { float dx = A[i][0]-B[i][0], dy = A[i][1]-B[i][1]; e += dx*dx + dy*dy; }
+  return e;
 }
