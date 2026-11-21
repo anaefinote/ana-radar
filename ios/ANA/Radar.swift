@@ -65,7 +65,23 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
         }
     }
 
-    var count: Int { peers.count }
+    /// Collapse rotating-address ghosts: one entry per selfId (the freshest). A phone that re-rolls its
+    /// BLE address stays ONE device, because selfId is stable.
+    private func dedupedById() -> [Peer] {
+        var bySelf: [String: Peer] = [:]
+        for p in peers.values where !p.selfId.isEmpty {
+            if let e = bySelf[p.selfId], e.lastSeen >= p.lastSeen { continue }
+            bySelf[p.selfId] = p
+        }
+        return Array(bySelf.values)
+    }
+
+    /// Distinct devices: one per selfId, plus any that haven't announced one yet.
+    var count: Int {
+        var ids = Set<String>(); var idless = 0
+        for p in peers.values { if p.selfId.isEmpty { idless += 1 } else { ids.insert(p.selfId) } }
+        return ids.count + idless
+    }
 
     func setName(_ n: String) {
         var nm = n.replacingOccurrences(of: ",", with: " ")
@@ -91,7 +107,7 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
 
     private func packPayload() -> String {
         var s = selfId + "~" + String(cleanName(beaconName).prefix(5)) + "~"
-        let mine = peers.values.filter { !$0.selfId.isEmpty }.sorted { $0.smRssi > $1.smRssi }.prefix(4)
+        let mine = dedupedById().sorted { $0.smRssi > $1.smRssi }.prefix(4)
         for p in mine { s += p.selfId + String(encRssi(p.smRssi)) }
         return s
     }
@@ -114,7 +130,7 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     /// matrix node 0 = this phone; nodes 1..k = peers (deterministic selfId order). Values are RSSI.
     func snapshot() -> String {
         let now = Date()
-        let withId = peers.values.filter { !$0.selfId.isEmpty }
+        let withId = dedupedById()
         let ordered = withId.sorted { $0.selfId < $1.selfId }
         let listed = withId.sorted { $0.smRssi > $1.smRssi }
         let peerRows = listed.map { p in
