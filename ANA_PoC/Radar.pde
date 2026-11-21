@@ -40,21 +40,31 @@ void drawRadar() {
   }
   noStroke();
 
-  // ---- blips: stronger signal sits nearer the centre; a stable angle per device from its id
-  for (int i = 0; i < rows.length; i++) {
-    String[] f = split(rows[i], ',');
-    if (f.length < 3) continue;
-    int rssi = int(f[1]), age = int(f[2]);
-    float rr = constrain(map(rssi, -40, -100, 0.12, 0.95), 0.12, 0.98) * R;
-    float ang = (rdrHash(f[0]) % 1000) / 1000.0 * TWO_PI;
-    float bx = cx + cos(ang) * rr, by = cy + sin(ang) * rr;
-    float fade = constrain(1 - age / 15.0, 0.2, 1.0);
-    for (int g = 4; g >= 1; g--) {
-      fill(77, 226, 196, 30 * fade);
-      ellipse(bx, by, (14 + g * 7) * fk, (14 + g * 7) * fk);
+  // ---- real positions when peers have shared their distance rows (MDS constellation);
+  //      otherwise the spoke fallback: real distance to each device, placeholder angle.
+  String mtx = rdrField(data, 2);
+  if (mtx.length() > 0) {
+    drawConstellation(cx, cy, R, mtx);
+  } else {
+    for (int i = 0; i < rows.length; i++) {
+      String[] f = split(rows[i], ',');
+      if (f.length < 3) continue;
+      int rssi = int(f[1]), age = int(f[2]);
+      float rr = constrain(map(rssi, -40, -100, 0.12, 0.95), 0.12, 0.98) * R;
+      float ang = (rdrHash(f[0]) % 1000) / 1000.0 * TWO_PI;
+      float bx = cx + cos(ang) * rr, by = cy + sin(ang) * rr;
+      float fade = constrain(1 - age / 15.0, 0.2, 1.0);
+      stroke(77, 226, 196, 70 * fade);
+      strokeWeight(2 * fk);
+      line(cx, cy, bx, by);
+      noStroke();
+      for (int g = 4; g >= 1; g--) {
+        fill(77, 226, 196, 30 * fade);
+        ellipse(bx, by, (14 + g * 7) * fk, (14 + g * 7) * fk);
+      }
+      fill(150, 255, 232, 235 * fade);
+      ellipse(bx, by, 15 * fk, 15 * fk);
     }
-    fill(150, 255, 232, 235 * fade);
-    ellipse(bx, by, 15 * fk, 15 * fk);
   }
 
   // ---- the live count in the middle
