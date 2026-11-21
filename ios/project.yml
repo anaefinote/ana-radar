@@ -1,0 +1,123 @@
+# XcodeGen project for ANA : RADAR — ANA Orbit + STATIA plus the RADAR tab (passive nearby-ANA-device
+# discovery). Its own bundle IDs (com.novera.ana.ios.radar / .radarstatia) so it installs ALONGSIDE the
+# frozen ANA Orbit / STATIA on the phone, never over them.
+# Was: XcodeGen project for ANA on iPhone / iPad (core ANA: manual entry, the log, EXPORT / IMPORT .pngmesh).
+# On a Mac:  bash sync_web.sh && xcodegen generate && open ANA.xcodeproj
+# In the cloud: .github/workflows/ios.yml does the same and builds an unsigned .ipa for Sideloadly.
+name: ANA
+options:
+  bundleIdPrefix: com.novera
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    MARKETING_VERSION: "0.40"
+    CURRENT_PROJECT_VERSION: "43"
+    SWIFT_VERSION: "5.0"
+targets:
+  ANA:
+    type: application
+    platform: iOS
+    sources:
+      - path: ANA
+      - path: Web            # the page, Processing.js and the sketch, copied in as a folder (Web/ in the app)
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.novera.ana.ios.radar
+        PRODUCT_NAME: ANA
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: ANA Radar
+        NSFaceIDUsageDescription: Face ID opens sub-watch, the wallets you keep off Watch's front face.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown]
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIFileSharingEnabled: true                 # the log shows in the Files app: On My iPhone > ANA
+        LSSupportsOpeningDocumentsInPlace: false
+        ITSAppUsesNonExemptEncryption: false
+        NSBluetoothAlwaysUsageDescription: ANA connects to ANA on your Android device so it can receive this iPhone's notifications, and Radar finds nearby ANA devices (no pairing).
+        NSLocalNetworkUsageDescription: CHATNOTE finds other ANA phones on your Wi-Fi so you can send them a message.
+        NSBonjourServices: [_anachat._tcp]
+        UIBackgroundModes: [bluetooth-central]       # keep the link to ANA on Android while ANA is in the background
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: ANA pngmesh
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.novera.pngmesh]
+          - CFBundleTypeName: ANA pngmesh sidecar
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.novera.pngmesh.sha256]
+        UTImportedTypeDeclarations:          # the first ANA on the iPhone owns these types; ANA BT opens them too
+          - UTTypeIdentifier: com.novera.pngmesh
+            UTTypeDescription: ANA pngmesh
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [pngmesh]
+          - UTTypeIdentifier: com.novera.pngmesh.sha256
+            UTTypeDescription: pngmesh sidecar (SHA-256)
+            UTTypeConformsTo: [public.plain-text]
+            UTTypeTagSpecification:
+              public.filename-extension: [sha256]
+  # ANA : STATIA, ANA's big sister: the same app plus Litecoin. Its own app (com.novera.ana.ios.statia).
+  STATIA:
+    type: application
+    platform: iOS
+    sources:
+      - path: ANA
+      - path: Web            # the page, Processing.js and the sketch, copied in as a folder (Web/ in the app)
+        type: folder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.novera.ana.ios.radarstatia
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) STATIA"   # Litecoin, and the page shows her name
+        PRODUCT_NAME: STATIA
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Info-STATIA.plist
+      properties:
+        CFBundleDisplayName: "ANA : STATIA Radar"
+        NSFaceIDUsageDescription: Face ID opens sub-watch, the wallets you keep off Watch's front face.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown]
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIFileSharingEnabled: true                 # the log shows in the Files app: On My iPhone > ANA
+        LSSupportsOpeningDocumentsInPlace: false
+        ITSAppUsesNonExemptEncryption: false
+        NSBluetoothAlwaysUsageDescription: ANA connects to ANA on your Android device so it can receive this iPhone's notifications, and Radar finds nearby ANA devices (no pairing).
+        NSLocalNetworkUsageDescription: CHATNOTE finds other ANA phones on your Wi-Fi so you can send them a message.
+        NSBonjourServices: [_anachat._tcp]
+        UIBackgroundModes: [bluetooth-central]       # keep the link to ANA on Android while ANA is in the background
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: ANA pngmesh
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.novera.pngmesh]
+          - CFBundleTypeName: ANA pngmesh sidecar
+            LSHandlerRank: Owner
+            LSItemContentTypes: [com.novera.pngmesh.sha256]
+        UTImportedTypeDeclarations:          # the first ANA on the iPhone owns these types; ANA BT opens them too
+          - UTTypeIdentifier: com.novera.pngmesh
+            UTTypeDescription: ANA pngmesh
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [pngmesh]
+          - UTTypeIdentifier: com.novera.pngmesh.sha256
+            UTTypeDescription: pngmesh sidecar (SHA-256)
+            UTTypeConformsTo: [public.plain-text]
+            UTTypeTagSpecification:
+              public.filename-extension: [sha256]

@@ -1,0 +1,297 @@
+{
+ "rule": "ANA Rule v1 (spec/SPEC.md)",
+ "note": "TEST keys only. Never the real Novvera root or spare.",
+ "trusted_raw": [
+  "046ccf9b361b03195370d4ea27b07291b45923a37062a410e55295673ca2297b5a23099f458ca11e4129635df235f660db6bfb06199a83380c59885d75c9dbc3f5",
+  "04975cef9f466270d282fbcb5b649e07370f08d195cf23eefa1cc51bc185d349e434d34e45ac32766ae865a229fd3b6c6920bdd0f9dc10a4d6e907e2cb92165825"
+ ],
+ "builds": {
+  "ORBIT": {
+   "reader": 1,
+   "tier": "ana",
+   "hives": [
+    "watch",
+    "efinote",
+    "clipnote",
+    "pacenote",
+    "hivenote",
+    "flex"
+   ]
+  },
+  "STATIA": {
+   "reader": 1,
+   "tier": "statia",
+   "hives": [
+    "watch",
+    "efinote",
+    "clipnote",
+    "pacenote",
+    "hivenote",
+    "flex"
+   ]
+  },
+  "NO_WATCH": {
+   "reader": 1,
+   "tier": "ana",
+   "hives": [
+    "efinote"
+   ]
+  }
+ },
+ "scenarios": [
+  {
+   "name": "versions",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "lesson_good.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_good.pngmesh",
+     "expect": "DUPLICATE"
+    },
+    {
+     "file": "lesson_good_v2.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_good.pngmesh",
+     "expect": "OLDER"
+    },
+    {
+     "file": "lesson_v2_other_body.pngmesh",
+     "expect": "FORK"
+    },
+    {
+     "file": "lesson_by_spare.pngmesh",
+     "expect": "ACCEPT"
+    }
+   ]
+  },
+  {
+   "name": "damage",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "lesson_tampered.pngmesh",
+     "expect": "BAD_SIGNATURE"
+    },
+    {
+     "file": "lesson_bad_sidecar.pngmesh",
+     "expect": "BAD_SIDECAR"
+    },
+    {
+     "file": "lesson_no_sidecar.pngmesh",
+     "expect": "BAD_SIDECAR"
+    },
+    {
+     "file": "lesson_truncated.pngmesh",
+     "expect": "BAD_FORMAT"
+    },
+    {
+     "file": "lesson_high_s.pngmesh",
+     "expect": "HIGH_S"
+    },
+    {
+     "file": "lesson_stranger.pngmesh",
+     "expect": "UNKNOWN_KEY"
+    }
+   ]
+  },
+  {
+   "name": "content",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "lesson_newer_reader.pngmesh",
+     "expect": "UPDATE_FIRST"
+    },
+    {
+     "file": "lesson_hive_efinote.pngmesh",
+     "expect": "UPDATE_FIRST"
+    },
+    {
+     "file": "lesson_litecoin_statia.pngmesh",
+     "expect": "WRONG_TIER"
+    },
+    {
+     "file": "lesson_http_server.pngmesh",
+     "expect": "BAD_RULES"
+    },
+    {
+     "file": "lesson_secret_url.pngmesh",
+     "expect": "BAD_RULES"
+    },
+    {
+     "file": "lesson_bad_test_address.pngmesh",
+     "expect": "BAD_RULES"
+    }
+   ]
+  },
+  {
+   "name": "statia",
+   "build": "STATIA",
+   "steps": [
+    {
+     "file": "lesson_litecoin_statia.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_good.pngmesh",
+     "expect": "ACCEPT"
+    }
+   ]
+  },
+  {
+   "name": "wrong_hive",
+   "build": "NO_WATCH",
+   "steps": [
+    {
+     "file": "lesson_good.pngmesh",
+     "expect": "WRONG_HIVE"
+    }
+   ]
+  },
+  {
+   "name": "licensee",
+   "build": "STATIA",
+   "steps": [
+    {
+     "file": "lesson_acme_no_permit.pngmesh",
+     "expect": "UNKNOWN_KEY"
+    },
+    {
+     "file": "chain1_permit_acme.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_acme.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_acme_wrong_ticker.pngmesh",
+     "expect": "NOT_PERMITTED"
+    },
+    {
+     "file": "lesson_acme_statia.pngmesh",
+     "expect": "NOT_PERMITTED"
+    },
+    {
+     "file": "chain2_revoke_acme.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_acme.pngmesh",
+     "expect": "REVOKED"
+    }
+   ]
+  },
+  {
+   "name": "expiry",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "chainB1_permit_until2.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_acme_until2.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "chainB2_revoke_stranger.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_acme_until2_b.pngmesh",
+     "expect": "EXPIRED"
+    }
+   ]
+  },
+  {
+   "name": "root_chain",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "chain2_revoke_acme.pngmesh",
+     "expect": "HOLE"
+    },
+    {
+     "file": "chain_permit_by_licensee.pngmesh",
+     "expect": "UNKNOWN_KEY"
+    },
+    {
+     "file": "chain1_bad_prev.pngmesh",
+     "expect": "FORK"
+    }
+   ]
+  },
+  {
+   "name": "root_chain_order",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "chain2_revoke_acme.pngmesh",
+     "expect": "HOLE"
+    },
+    {
+     "file": "chain1_permit_acme.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "chain2_revoke_acme.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "chain2_revoke_acme.pngmesh",
+     "expect": "DUPLICATE"
+    },
+    {
+     "file": "chain2_fork.pngmesh",
+     "expect": "FORK"
+    },
+    {
+     "file": "chain3_after_fork.pngmesh",
+     "expect": "FROZEN"
+    }
+   ]
+  },
+  {
+   "name": "spare_revokes_root",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "lesson_good.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "chainC1_spare_revokes_root.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_good_v2.pngmesh",
+     "expect": "REVOKED"
+    },
+    {
+     "file": "lesson_by_spare.pngmesh",
+     "expect": "ACCEPT"
+    }
+   ]
+  },
+  {
+   "name": "revoked_root_behind_permit",
+   "build": "ORBIT",
+   "steps": [
+    {
+     "file": "chainC1_spare_revokes_root.pngmesh",
+     "expect": "ACCEPT"
+    },
+    {
+     "file": "lesson_acme.pngmesh",
+     "expect": "REVOKED"
+    }
+   ]
+  }
+ ]
+}
