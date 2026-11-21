@@ -76,11 +76,12 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
         return Array(bySelf.values)
     }
 
-    /// Distinct devices: one per selfId, plus any that haven't announced one yet.
+    /// Distinct real radar devices: one per selfId. Anything not broadcasting a selfId (old builds,
+    /// strays, fading entries) is ignored, so selfId-less ghosts can't inflate the count.
     var count: Int {
-        var ids = Set<String>(); var idless = 0
-        for p in peers.values { if p.selfId.isEmpty { idless += 1 } else { ids.insert(p.selfId) } }
-        return ids.count + idless
+        var ids = Set<String>()
+        for p in peers.values where !p.selfId.isEmpty { ids.insert(p.selfId) }
+        return ids.count
     }
 
     func setName(_ n: String) {
