@@ -197,14 +197,20 @@ void drawFenceStrip(boolean fenced, int fRole, String fName, int fHue, int fMemb
     fill(60, 30, 36); rrect(FX(590), y, 218 * fk, h, 20 * fk);
     fill(#FF9BA6); textAlign(CENTER, CENTER); textSizeQ(24 * fk);
     boldTextF("Cancel", FX(590) + 109 * fk, y + h / 2);
-  } else if (fenced) {                         // member or host — banner + Leave
+  } else if (fenced) {                         // member or host — banner + Leave (+ Seal for host)
     color c = fenceCol(fHue);
+    float bw = (fRole == 1) ? 360 * fk : 520 * fk;   // host leaves room for a Seal button
     fill(red(c), green(c), blue(c), 40);
-    rrect(FX(45), y, 520 * fk, h, 20 * fk);
+    rrect(FX(45), y, bw, h, 20 * fk);
     fill(c); ellipse(FX(80), y + h / 2, 26 * fk, 26 * fk);
-    fill(#EAFBF6); textAlign(LEFT, CENTER); textSizeQ(24 * fk);
+    fill(#EAFBF6); textAlign(LEFT, CENTER); textSizeQ(fRole == 1 ? 21 * fk : 24 * fk);
     String tag = fRole == 1 ? "  ·  host" : "";
-    boldTextF((fName.length() > 0 ? fName : "Fence") + "  ·  " + fMembers + " in" + tag, FX(108), y + h / 2);
+    boldTextF((fName.length() > 0 ? fName : "Fence") + "  ·  " + fMembers + tag, FX(108), y + h / 2);
+    if (fRole == 1) {                          // Seal: sign the roster + export as pngmesh
+      fill(18, 70, 58); rrect(FX(420), y, 150 * fk, h, 20 * fk);
+      fill(#7CE0BB); textAlign(CENTER, CENTER); textSizeQ(23 * fk);
+      boldTextF("Seal", FX(420) + 75 * fk, y + h / 2);
+    }
     fill(60, 30, 36); rrect(FX(590), y, 218 * fk, h, 20 * fk);
     fill(#FF9BA6); textAlign(CENTER, CENTER); textSizeQ(24 * fk);
     boldTextF("Leave fence", FX(590) + 109 * fk, y + h / 2);
@@ -232,6 +238,40 @@ void drawFenceStrip(boolean fenced, int fRole, String fName, int fHue, int fMemb
   noStroke();
 }
 
+// Seal the fence: write a signed record of who was inside, over the window, as a pngmesh + sha256.
+// The signed roster IS the seal (v0.3) — host signs it with its FLEX key; anyone can verify later.
+void fenceSeal() {
+  if (js == null) return;
+  String fInfo = js.fenceInfo();
+  if (fInfo.length() == 0) return;
+  String[] fi = split(fInfo, '\t');
+  if (fi.length < 2) return;
+  String fid = fi[0], name = fi[1];
+  String data = js.radarPeers();
+  String ps = rdrField(data, 1);
+  String[] rows = ps.length() == 0 ? new String[0] : split(ps, ';');
+
+  StringBuilder b = new StringBuilder();
+  b.append("ANASEAL1\n");
+  b.append("fence: ").append(fid).append("  ").append(name).append("\n");
+  b.append("sealed: ").append(nf(year(), 4)).append("-").append(nf(month(), 2)).append("-").append(nf(day(), 2))
+   .append(" ").append(nf(hour(), 2)).append(":").append(nf(minute(), 2)).append("\n");
+  b.append("host_key: ").append(js.flexKey()).append("\n");
+  b.append("member: host  ").append(gMyName).append("\n");
+  for (int i = 0; i < rows.length; i++) {
+    String[] f = split(rows[i], ',');
+    if (f.length < 5) continue;
+    if (trim(f[4]).equals(fid)) {
+      String nm = (f.length > 3 && trim(f[3]).length() > 0) ? trim(f[3]) : "";
+      b.append("member: ").append(f[0]).append("  ").append(nm).append("\n");
+    }
+  }
+  String sig = js.flexSign(b.toString());          // host signs the whole roster
+  b.append("sig: ").append(sig).append("\n");
+  b.append("sha256: ").append(js.flexHash(b.toString())).append("\n");
+  js.exportPngmesh(b.toString());                  // -> .pngmesh + .pngmesh.sha256, shareable
+}
+
 void radarTap(float mx, float my) {
   poke();
   String fInfo = (js != null) ? js.fenceInfo() : "";
@@ -244,7 +284,8 @@ void radarTap(float mx, float my) {
   if (my >= fy && my <= fy + fh) {
     if (fenced && fRole == 2) {                          // waiting: Cancel
       if (mx >= FX(590) && mx <= FX(590) + 218 * fk) { if (js != null) js.fenceLeave(); return; }
-    } else if (fenced) {                                 // member/host: Leave
+    } else if (fenced) {                                 // member/host: Seal (host) + Leave
+      if (fRole == 1 && mx >= FX(420) && mx <= FX(420) + 150 * fk) { fenceSeal(); return; }
       if (mx >= FX(590) && mx <= FX(590) + 218 * fk) { if (js != null) js.fenceLeave(); return; }
     } else {                                             // Create + knock pills
       if (mx >= FX(45) && mx <= FX(45) + 300 * fk) {
