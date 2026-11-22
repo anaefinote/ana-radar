@@ -222,10 +222,23 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             let fid = arg(a, 0)
             later { Radar.shared.fenceJoin(fid) }
             return true
+        case "fenceRequest":
+            let fid = arg(a, 0)
+            later { Radar.shared.fenceRequest(fid) }
+            return true
+        case "fenceAccept":
+            let id = arg(a, 0)
+            later { Radar.shared.fenceAccept(id) }
+            return true
+        case "fenceDecline":
+            let id = arg(a, 0)
+            later { Radar.shared.fenceDecline(id) }
+            return true
         case "fenceLeave":
             later { Radar.shared.fenceLeave() }
             return true
         case "fenceInfo": return Radar.shared.fenceInfo()
+        case "fenceKnockers": return Radar.shared.fenceKnockers()
         case "fenceOffers": return Radar.shared.fenceOffers()
         case "walletText": return Wallets.shared.pageText()
         case "lessonsText": return Lessons.shared.text()

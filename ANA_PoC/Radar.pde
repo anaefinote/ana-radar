@@ -16,10 +16,10 @@ void drawRadar() {
   String fInfo = (js != null) ? js.fenceInfo() : "";
   boolean fenced = fInfo.length() > 0;
   String myFid = "-", fName = "";
-  int fHue = 0, fMembers = 0;
+  int fHue = 0, fMembers = 0, fRole = 0;      // role 0 member / 1 host / 2 knocking
   if (fenced) {
     String[] fi = split(fInfo, '\t');
-    if (fi.length >= 5) { myFid = fi[0]; fName = fi[1]; fHue = int(fi[2]); fMembers = int(fi[4]); }
+    if (fi.length >= 5) { myFid = fi[0]; fName = fi[1]; fHue = int(fi[2]); fRole = int(fi[3]); fMembers = int(fi[4]); }
     rdrTintHue = fHue;
   } else {
     rdrTintHue = -1;
@@ -87,48 +87,84 @@ void drawRadar() {
   text("" + n, cx, cy + 10 * fk);
   fill(#9FD9CE);
   textSizeQ(27 * fk);
-  if (fenced) text(fMembers + (fMembers == 1 ? " in fence" : " in the fence"), cx, cy + 56 * fk);
-  else        text(n == 1 ? "ANA device near" : "ANA devices near", cx, cy + 56 * fk);
+  if (fRole == 2)   text("waiting to be let in", cx, cy + 56 * fk);
+  else if (fenced)  text(fMembers + (fMembers == 1 ? " in fence" : " in the fence"), cx, cy + 56 * fk);
+  else              text(n == 1 ? "ANA device near" : "ANA devices near", cx, cy + 56 * fk);
 
   // ---- ANA FENCE controls, between the scope and the list
-  drawFenceStrip(fenced, fName, fHue, fMembers);
+  drawFenceStrip(fenced, fRole, fName, fHue, fMembers);
 
-  // ---- the list under the scope
-  float top = FY(995), rowH = 92 * fk;
-  int shown = min(rows.length, 4);
-  glassCard(FX(45), top, 762 * fk, max(1, shown) * rowH + 22 * fk, 34 * fk, color(40, 120, 110));
-  if (n == 0 || rows.length == 0) {
-    fill(#9FD9CE);
-    textAlign(CENTER, CENTER);
-    textSizeQ(23 * fk);
-    text("Listening… no ANA devices in range yet", FX(426), top + rowH * 0.5 + 10 * fk);
-  }
-  else {
-    for (int i = 0; i < shown; i++) {
-      String[] f = split(rows[i], ',');
-      if (f.length < 3) continue;
-      float y = top + 22 * fk + i * rowH;
-      if (i > 0) { stroke(30, 70, 64, 160); strokeWeight(1.2 * fk); line(FX(70), y, FX(782), y); noStroke(); }
-      String rfid = (f.length > 4) ? trim(f[4]) : "-";                 // this peer's fence
-      boolean mem = fenced && !myFid.equals("-") && rfid.equals(myFid); // in my fence?
-      fill(mem ? fenceCol(fHue) : color(#4DE2C4));
-      ellipse(FX(92), y + 40 * fk, 22 * fk, 22 * fk);
-      fill(#EAFBF6);
-      textAlign(LEFT, BASELINE);
-      textSizeQ(27 * fk);
-      String nm = (f.length > 3 && trim(f[3]).length() > 0) ? trim(f[3]) : "";
-      boldTextF(nm.length() > 0 ? ("ANA · " + f[0] + " · " + nm) : ("ANA · " + f[0]), FX(132), y + 36 * fk);
+  // ---- host gate takes the list's place while someone's knocking; otherwise the device list
+  String knockers = (fenced && fRole == 1 && js != null) ? js.fenceKnockers() : "";
+  if (knockers.length() > 0) {
+    drawHostGate(knockers, fHue);
+  } else {
+    float top = FY(995), rowH = 92 * fk;
+    int shown = min(rows.length, 4);
+    glassCard(FX(45), top, 762 * fk, max(1, shown) * rowH + 22 * fk, 34 * fk, color(40, 120, 110));
+    if (n == 0 || rows.length == 0) {
       fill(#9FD9CE);
-      textSizeQ(21 * fk);
-      int age = int(f[2]);
-      text(f[1] + " dBm  ·  " + (age <= 1 ? "now" : age + "s ago"), FX(132), y + 66 * fk);
-      int bars = (int) constrain(map(int(f[1]), -95, -45, 1, 4), 1, 4);  // signal strength -> 1..4 bars
-      for (int b = 0; b < 4; b++) {
-        fill(b < bars ? #4DE2C4 : color(40, 70, 64));
-        float bh = (10 + b * 7) * fk;
-        rrect(FX(716) + b * 20 * fk, y + 54 * fk - bh, 13 * fk, bh, 3 * fk);
+      textAlign(CENTER, CENTER);
+      textSizeQ(23 * fk);
+      text("Listening… no ANA devices in range yet", FX(426), top + rowH * 0.5 + 10 * fk);
+    } else {
+      for (int i = 0; i < shown; i++) {
+        String[] f = split(rows[i], ',');
+        if (f.length < 3) continue;
+        float y = top + 22 * fk + i * rowH;
+        if (i > 0) { stroke(30, 70, 64, 160); strokeWeight(1.2 * fk); line(FX(70), y, FX(782), y); noStroke(); }
+        String rfid = (f.length > 4) ? trim(f[4]) : "-";
+        int tier = fenceTier(rfid, myFid, fenced);          // 0 stranger, 1 member, 2 knocker
+        color dot = tier == 1 ? fenceCol(fHue) : (tier == 2 ? color(#C9922E) : color(#4DE2C4));
+        fill(dot);
+        ellipse(FX(92), y + 40 * fk, 22 * fk, 22 * fk);
+        fill(#EAFBF6);
+        textAlign(LEFT, BASELINE);
+        textSizeQ(27 * fk);
+        String nm = (f.length > 3 && trim(f[3]).length() > 0) ? trim(f[3]) : "";
+        boldTextF(nm.length() > 0 ? ("ANA · " + f[0] + " · " + nm) : ("ANA · " + f[0]), FX(132), y + 36 * fk);
+        fill(#9FD9CE);
+        textSizeQ(21 * fk);
+        int age = int(f[2]);
+        String tag = tier == 1 ? "  ·  in fence" : (tier == 2 ? "  ·  knocking" : "");
+        text(f[1] + " dBm  ·  " + (age <= 1 ? "now" : age + "s ago") + tag, FX(132), y + 66 * fk);
+        int bars = (int) constrain(map(int(f[1]), -95, -45, 1, 4), 1, 4);
+        for (int b = 0; b < 4; b++) {
+          fill(b < bars ? dot : color(40, 70, 64));
+          float bh = (10 + b * 7) * fk;
+          rrect(FX(716) + b * 20 * fk, y + 54 * fk - bh, 13 * fk, bh, 3 * fk);
+        }
       }
     }
+  }
+}
+
+// which tier a peer's fence tag puts it in, from my own fence's perspective
+int fenceTier(String rfid, String myFid, boolean fenced) {
+  if (!fenced || myFid.equals("-")) return 0;
+  if (rfid.equals(myFid)) return 1;            // broadcasting my fence -> member
+  if (rfid.equals("?" + myFid)) return 2;      // knocking on my fence
+  return 0;                                    // stranger / other fence
+}
+
+// host gate: up to two accept/decline cards where the device list would be
+void drawHostGate(String knockers, int fHue) {
+  String[] ks = split(knockers, ';');
+  float top = FY(995);
+  int shown = min(ks.length, 2);
+  for (int i = 0; i < shown; i++) {
+    String[] k = split(ks[i], ',');
+    if (k.length < 1 || trim(k[0]).length() == 0) continue;
+    float y = top + i * (128 * fk);
+    glassCard(FX(45), y, 762 * fk, 110 * fk, 28 * fk, color(150, 110, 40));
+    fill(#C9922E); ellipse(FX(88), y + 36 * fk, 22 * fk, 22 * fk);
+    fill(#F0D79A); textAlign(LEFT, BASELINE); textSizeQ(26 * fk);
+    String nm = (k.length > 2 && trim(k[2]).length() > 0) ? trim(k[2]) : "Guest";
+    boldTextF(nm + " · " + k[0] + "  wants in", FX(120), y + 44 * fk);
+    fill(18, 58, 44); rrect(FX(70), y + 58 * fk, 330 * fk, 42 * fk, 12 * fk);
+    fill(#7CE0BB); textAlign(CENTER, CENTER); textSizeQ(23 * fk); boldTextF("Accept", FX(70) + 165 * fk, y + 80 * fk);
+    fill(52, 28, 32); rrect(FX(432), y + 58 * fk, 330 * fk, 42 * fk, 12 * fk);
+    fill(#FF9BA6); boldTextF("Decline", FX(432) + 165 * fk, y + 80 * fk);
   }
 }
 
@@ -147,22 +183,32 @@ int rdrHash(String s) {
   return h;
 }
 
-// ANA FENCE strip: when I'm in a fence, a coloured banner + Leave; otherwise Create, and Join
-// pills for any fence seen nearby. Tap handling in radarTap mirrors these exact rects.
-void drawFenceStrip(boolean fenced, String fName, int fHue, int fMembers) {
+// ANA FENCE strip. States: not fenced -> Create + Request pills; knocking (role 2) -> waiting +
+// Cancel; member/host (role 0/1) -> banner + Leave. Tap handling in radarTap mirrors these rects.
+void drawFenceStrip(boolean fenced, int fRole, String fName, int fHue, int fMembers) {
   float y = FY(905), h = 64 * fk;
   noStroke();
-  if (fenced) {
+  if (fenced && fRole == 2) {                  // knocking — waiting to be let in
+    color c = fenceCol(fHue);
+    fill(red(c), green(c), blue(c), 40);
+    rrect(FX(45), y, 520 * fk, h, 20 * fk);
+    fill(#F0D79A); textAlign(LEFT, CENTER); textSizeQ(24 * fk);
+    boldTextF("Requested  ·  waiting for host", FX(72), y + h / 2);
+    fill(60, 30, 36); rrect(FX(590), y, 218 * fk, h, 20 * fk);
+    fill(#FF9BA6); textAlign(CENTER, CENTER); textSizeQ(24 * fk);
+    boldTextF("Cancel", FX(590) + 109 * fk, y + h / 2);
+  } else if (fenced) {                         // member or host — banner + Leave
     color c = fenceCol(fHue);
     fill(red(c), green(c), blue(c), 40);
     rrect(FX(45), y, 520 * fk, h, 20 * fk);
     fill(c); ellipse(FX(80), y + h / 2, 26 * fk, 26 * fk);
-    fill(#EAFBF6); textAlign(LEFT, CENTER); textSizeQ(25 * fk);
-    boldTextF((fName.length() > 0 ? fName : "Fence") + "  ·  " + fMembers + " in", FX(108), y + h / 2);
+    fill(#EAFBF6); textAlign(LEFT, CENTER); textSizeQ(24 * fk);
+    String tag = fRole == 1 ? "  ·  host" : "";
+    boldTextF((fName.length() > 0 ? fName : "Fence") + "  ·  " + fMembers + " in" + tag, FX(108), y + h / 2);
     fill(60, 30, 36); rrect(FX(590), y, 218 * fk, h, 20 * fk);
     fill(#FF9BA6); textAlign(CENTER, CENTER); textSizeQ(24 * fk);
     boldTextF("Leave fence", FX(590) + 109 * fk, y + h / 2);
-  } else {
+  } else {                                     // no fence — Create + Request pills
     fill(20, 60, 54); rrect(FX(45), y, 300 * fk, h, 20 * fk);
     fill(#4DE2C4); textAlign(CENTER, CENTER); textSizeQ(24 * fk);
     boldTextF("+  Create fence", FX(45) + 150 * fk, y + h / 2);
@@ -178,7 +224,7 @@ void drawFenceStrip(boolean fenced, String fName, int fHue, int fMembers) {
         fill(red(c), green(c), blue(c), 45); rrect(x, y, 210 * fk, h, 20 * fk);
         fill(c); ellipse(x + 26 * fk, y + h / 2, 24 * fk, 24 * fk);
         fill(#EAFBF6); textAlign(LEFT, CENTER); textSizeQ(22 * fk);
-        boldTextF("Join · " + cnt, x + 48 * fk, y + h / 2);
+        boldTextF("Knock · " + cnt, x + 48 * fk, y + h / 2);
         x += 222 * fk;
       }
     }
@@ -188,14 +234,19 @@ void drawFenceStrip(boolean fenced, String fName, int fHue, int fMembers) {
 
 void radarTap(float mx, float my) {
   poke();
-  // ANA FENCE controls first (same rects as drawFenceStrip)
   String fInfo = (js != null) ? js.fenceInfo() : "";
   boolean fenced = fInfo.length() > 0;
+  int fRole = 0; String myFid = "-";
+  if (fenced) { String[] fi = split(fInfo, '\t'); if (fi.length >= 5) { myFid = fi[0]; fRole = int(fi[3]); } }
+
+  // ---- fence strip row
   float fy = FY(905), fh = 64 * fk;
   if (my >= fy && my <= fy + fh) {
-    if (fenced) {
+    if (fenced && fRole == 2) {                          // waiting: Cancel
       if (mx >= FX(590) && mx <= FX(590) + 218 * fk) { if (js != null) js.fenceLeave(); return; }
-    } else {
+    } else if (fenced) {                                 // member/host: Leave
+      if (mx >= FX(590) && mx <= FX(590) + 218 * fk) { if (js != null) js.fenceLeave(); return; }
+    } else {                                             // Create + knock pills
       if (mx >= FX(45) && mx <= FX(45) + 300 * fk) {
         if (js != null) js.fenceCreate("Fence " + nf(hour(), 2) + nf(minute(), 2), 25, 480);
         return;
@@ -207,13 +258,32 @@ void radarTap(float mx, float my) {
         for (int i = 0; i < ofs.length && i < 2; i++) {
           String[] o = split(ofs[i], ',');
           if (o.length < 2) continue;
-          if (mx >= x && mx <= x + 210 * fk) { if (js != null) js.fenceJoin(o[0]); return; }
+          if (mx >= x && mx <= x + 210 * fk) { if (js != null) js.fenceRequest(o[0]); return; }
           x += 222 * fk;
         }
       }
     }
   }
-  // tap a device in the list -> open CHATNOTE and talk to who's nearby (discovery -> conversation)
+
+  // ---- host gate: Accept / Decline on knocker cards (same rects as drawHostGate)
+  String knockers = (fenced && fRole == 1 && js != null) ? js.fenceKnockers() : "";
+  if (knockers.length() > 0) {
+    String[] ks = split(knockers, ';');
+    float top = FY(995);
+    for (int i = 0; i < ks.length && i < 2; i++) {
+      String[] k = split(ks[i], ',');
+      if (k.length < 1 || trim(k[0]).length() == 0) continue;
+      float y = top + i * (128 * fk);
+      float by = y + 58 * fk, bh = 42 * fk;
+      if (my >= by && my <= by + bh) {
+        if (mx >= FX(70) && mx <= FX(70) + 330 * fk) { if (js != null) js.fenceAccept(k[0]); return; }
+        if (mx >= FX(432) && mx <= FX(432) + 330 * fk) { if (js != null) js.fenceDecline(k[0]); return; }
+      }
+    }
+    return;                                              // gate is showing; no list to tap
+  }
+
+  // ---- tap a device in the list -> open CHATNOTE
   int n = (js != null) ? js.radarCount() : 0;
   if (n <= 0) return;
   int shown = min(n, 4);

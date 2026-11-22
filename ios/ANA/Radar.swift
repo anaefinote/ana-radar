@@ -26,7 +26,8 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
         let firstSeen: Date
         var lastSeen: Date
         var name: String
-        var fid: String             // the fence this peer is broadcasting, or "-"
+        var fid: String             // the fence this peer is broadcasting ("465", "?465", or "-")
+        var roster: Set<String>     // ids this peer (a host) has accepted
         var row: [String: Int]      // the peer's own measured RSSI to others, keyed by their selfId
     }
 
@@ -46,8 +47,10 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     private(set) var myFid = "-"
     private var myFenceName = ""
     private var myHue = 0
-    private var myRole = 0           // 0 = member, 1 = creator
+    private var myRole = 0           // 0 = member, 1 = host (creator)
     private var fenceT0: TimeInterval = 0, fenceT1: TimeInterval = 0
+    private var acceptedIds = Set<String>()
+    private var declinedIds = Set<String>()
 
     /// 3 hex of this phone's key — the stable id every phone agrees on. Random fallback if no key yet.
     private lazy var selfId: String = {
@@ -117,27 +120,38 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     // "id~name~fid~row"  (fid "-" when not fenced). Fenced beacons carry one fewer peer row so the
     // fenceId fits iOS's ~27-byte local name; MDS fills the missing edge with the mean distance.
     private func packPayload() -> String {
+        let host = myRole == 1 && myFid != "-" && !myFid.hasPrefix("?")
+        let announce = host && !acceptedIds.isEmpty
         var s = selfId + "~" + String(cleanName(beaconName).prefix(5)) + "~" + myFid + "~"
-        let rm = myFid == "-" ? 4 : 3
+        let rm = myFid == "-" ? 4 : (announce ? 1 : 3)
         let mine = dedupedById().sorted { $0.smRssi > $1.smRssi }.prefix(rm)
         for p in mine { s += p.selfId + String(encRssi(p.smRssi)) }
+        if announce { s += "=" + acceptedIds.prefix(2).joined() }    // accept roster -> knockers flip
         return s
     }
 
-    private func parsePayload(_ s: String) -> (String, String, String, [String: Int])? {
+    private func parsePayload(_ s: String) -> (String, String, String, Set<String>, [String: Int])? {
         let parts = s.components(separatedBy: "~")
         guard parts.count >= 3, parts[0].count == 3 else { return nil }
         let sid = parts[0], name = parts[1]
         var fid = "-", rowStart = 2
         if parts.count >= 4 { fid = parts[2]; rowStart = 3 }          // new format: id~name~fid~row
-        let body = Array(parts[rowStart...].joined(separator: "~"))
+        var bodyStr = parts[rowStart...].joined(separator: "~")
+        var roster = Set<String>()
+        if let eq = bodyStr.firstIndex(of: "=") {                     // "=" splits rssi rows from the accept roster
+            let r = Array(bodyStr[bodyStr.index(after: eq)...])
+            var k = 0
+            while k + 3 <= r.count { roster.insert(String(r[k..<k+3])); k += 3 }
+            bodyStr = String(bodyStr[..<eq])
+        }
+        let body = Array(bodyStr)
         var row: [String: Int] = [:]
         var i = 0
         while i + 4 <= body.count {
             row[String(body[i..<i+3])] = decRssi(body[i+3])
             i += 4
         }
-        return (sid, name, fid, row)
+        return (sid, name, fid, roster, row)
     }
 
     /// snapshot-v2:  "count \t id,rssi,age,name;…  \t  matrixRow;matrixRow;…"
@@ -211,8 +225,8 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
            let md = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, md.count > 2 {
             raw = String(data: md.subdata(in: 2..<md.count), encoding: .utf8)
         }
-        var sid = "", nm = "", pfid = "-", prow: [String: Int] = [:]
-        if let s = raw, let parsed = parsePayload(s) { sid = parsed.0; nm = parsed.1; pfid = parsed.2; prow = parsed.3 }
+        var sid = "", nm = "", pfid = "-", prost = Set<String>(), prow: [String: Int] = [:]
+        if let s = raw, let parsed = parsePayload(s) { sid = parsed.0; nm = parsed.1; pfid = parsed.2; prost = parsed.3; prow = parsed.4 }
         else { nm = raw ?? "" }                        // old-format beacon: plain name, no matrix row
         let resolved = cleanName(nm).isEmpty ? (p.name ?? "ANA device") : cleanName(nm)
         let r = RSSI.intValue
@@ -221,11 +235,11 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
             peer.rssi = r
             peer.smRssi = Int(0.6 * Double(peer.smRssi) + 0.4 * Double(r))   // EMA smoothing
             peer.lastSeen = now; peer.name = resolved
-            if !sid.isEmpty { peer.selfId = sid; peer.fid = pfid; peer.row = prow }
+            if !sid.isEmpty { peer.selfId = sid; peer.fid = pfid; peer.roster = prost; peer.row = prow }
             peers[p.identifier] = peer
         } else {
             peers[p.identifier] = Peer(id: p.identifier, selfId: sid, rssi: r, smRssi: r,
-                                       firstSeen: now, lastSeen: now, name: resolved, fid: pfid, row: prow)
+                                       firstSeen: now, lastSeen: now, name: resolved, fid: pfid, roster: prost, row: prow)
             onChange?()
         }
     }
@@ -269,39 +283,81 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     }
     private func hueOf(_ fid: String) -> Int { (Int(fid, radix: 16) ?? 0) % 360 }
 
+    private var baseFid: String { myFid.hasPrefix("?") ? String(myFid.dropFirst()) : myFid }
+
+    // a knocker flips to member the moment it sees the host broadcasting its id in the accept roster
+    private func checkAcceptFlip() {
+        guard myFid.hasPrefix("?") else { return }
+        let want = String(myFid.dropFirst())
+        for p in peers.values where p.fid == want && p.roster.contains(selfId) {
+            myFid = want; myHue = hueOf(want); myRole = 0
+            refreshBeacon()
+            return
+        }
+    }
+
     func fenceCreate(_ name: String, _ radiusM: Int, _ durMin: Int) {
         myFenceName = cleanName(name).isEmpty ? "Fence" : cleanName(name)
         fenceT0 = Date().timeIntervalSince1970
         fenceT1 = fenceT0 + Double(max(1, durMin)) * 60
         myFid = fhash(myFenceName + "|" + String(Int(fenceT0)) + "|" + selfId)
         myHue = hueOf(myFid); myRole = 1
+        acceptedIds.removeAll(); declinedIds.removeAll()
         refreshBeacon()
     }
-    func fenceJoin(_ fid: String) {
+    func fenceRequest(_ fid: String) {               // knock on a fence seen nearby
         let f = fid.lowercased()
         guard f.count == 3, f != "-" else { return }
-        myFid = f; myHue = hueOf(f); myRole = 0
+        myFid = "?" + f; myHue = hueOf(f); myRole = 0
         if myFenceName.isEmpty { myFenceName = "Fence" }
-        if fenceT0 == 0 { fenceT0 = Date().timeIntervalSince1970 }
+        acceptedIds.removeAll(); declinedIds.removeAll()
         refreshBeacon()
+    }
+    func fenceJoin(_ fid: String) { fenceRequest(fid) }   // legacy alias
+    func fenceAccept(_ id: String) {
+        guard id.count == 3 else { return }
+        declinedIds.remove(id); acceptedIds.insert(id); refreshBeacon()
+    }
+    func fenceDecline(_ id: String) {
+        guard id.count == 3 else { return }
+        acceptedIds.remove(id); declinedIds.insert(id); refreshBeacon()
     }
     func fenceLeave() {
         myFid = "-"; myFenceName = ""; myHue = 0; myRole = 0; fenceT0 = 0; fenceT1 = 0
+        acceptedIds.removeAll(); declinedIds.removeAll()
         refreshBeacon()
     }
-    /// "fid \t name \t hue \t role \t members \t t0 \t t1", or "".
+    /// "baseFid \t name \t hue \t role \t members \t t0 \t t1", role 0 member / 1 host / 2 knocking; "" if none.
     func fenceInfo() -> String {
+        checkAcceptFlip()
         if myFid == "-" { return "" }
+        let knock = myFid.hasPrefix("?")
+        let base = baseFid
         var set = Set<String>()
-        for p in peers.values where !p.selfId.isEmpty && p.fid == myFid { set.insert(p.selfId) }
-        let members = 1 + set.count
-        return "\(myFid)\t\(myFenceName)\t\(myHue)\t\(myRole)\t\(members)\t\(Int(fenceT0))\t\(Int(fenceT1))"
+        for p in peers.values where !p.selfId.isEmpty && p.fid == base { set.insert(p.selfId) }
+        let members = (knock ? 0 : 1) + set.count
+        let role = knock ? 2 : (myRole == 1 ? 1 : 0)
+        return "\(base)\t\(myFenceName)\t\(hueOf(base))\t\(role)\t\(members)\t\(Int(fenceT0))\t\(Int(fenceT1))"
     }
-    /// Fences seen nearby I'm not in:  "fid,hue,count ; …".
+    /// Knockers on my fence (host only):  "id,rssi,name ; …"  (excludes declined and accepted).
+    func fenceKnockers() -> String {
+        guard myRole == 1, myFid != "-", !myFid.hasPrefix("?") else { return "" }
+        let want = "?" + myFid
+        var seen = Set<String>(); var rows: [String] = []
+        for p in peers.values where p.fid == want && !p.selfId.isEmpty {
+            if declinedIds.contains(p.selfId) || acceptedIds.contains(p.selfId) { continue }
+            if seen.insert(p.selfId).inserted {
+                rows.append("\(p.selfId),\(p.smRssi),\(cleanName(p.name))")
+            }
+        }
+        return rows.joined(separator: ";")
+    }
+    /// Fences I could knock on (members broadcasting, not "?", not mine):  "fid,hue,count ; …".
     func fenceOffers() -> String {
+        let base = baseFid
         var seen: [String: Set<String>] = [:]
         var order: [String] = []
-        for p in peers.values where p.fid != "-" && p.fid != myFid && !p.selfId.isEmpty {
+        for p in peers.values where p.fid != "-" && !p.fid.hasPrefix("?") && p.fid != base && !p.selfId.isEmpty {
             if seen[p.fid] == nil { seen[p.fid] = []; order.append(p.fid) }
             seen[p.fid]?.insert(p.selfId)
         }

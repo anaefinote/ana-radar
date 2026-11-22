@@ -49,11 +49,15 @@ interface JavaScript {
   int radarCount();                    // how many ANA devices are nearby right now
   String radarPeers();                 // "count\tid8,rssi,age,name;..." strongest signal first
   void radarName(String n);            // the display name this phone broadcasts ("the name people see you as")
-  void fenceCreate(String name, int radius, int durMin);  // ANA FENCE: become a fence node (creator)
-  void fenceJoin(String fid);          // join a fence seen on the radar (adopt its fenceId)
-  void fenceLeave();                   // drop out of the current fence
-  String fenceInfo();                  // "fid\tname\thue\trole\tmembers\tt0\tt1" for my fence, or ""
-  String fenceOffers();                // fences nearby I'm not in: "fid,hue,count;..."
+  void fenceCreate(String name, int radius, int durMin);  // ANA FENCE: become the host
+  void fenceJoin(String fid);          // legacy alias of fenceRequest
+  void fenceRequest(String fid);       // knock on a fence seen nearby (awaits the host's accept)
+  void fenceAccept(String id);         // host: admit a knocker
+  void fenceDecline(String id);        // host: turn a knocker away
+  void fenceLeave();                   // drop out / stop knocking
+  String fenceInfo();                  // "fid\tname\thue\trole\tmembers\tt0\tt1"; role 0 member/1 host/2 knocking; "" if none
+  String fenceKnockers();              // host: "id,rssi,name;..." of those awaiting acceptance
+  String fenceOffers();                // fences nearby I could knock on: "fid,hue,count;..."
   String walletText();                 // WATCH: the wallets and their activity, tab-separated lines
   boolean walletBusy();                // WATCH: checking right now
   void walletRefresh();                // WATCH: check every wallet now
