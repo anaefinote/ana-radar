@@ -477,7 +477,7 @@ void setTab(int t) {
   if (t == T_SETTINGS) setPicking = false;
   if (js != null && tab != t) {                 // RADAR scans only while its tab is open
     if (tab == T_RADAR) js.radarOn(false);
-    if (t == T_RADAR) js.radarOn(true);
+    if (t == T_RADAR) { js.radarName(gMyName); js.radarOn(true); }
   }
   tab = t;
   guiDirty = true;
