@@ -23,6 +23,15 @@ enum AnaMesh {
     static let classGst: Int32 = 21
     static let gstCols = ["id", "kind", "group", "from", "fromName", "when", "a", "b", "c", "d"]
 
+    /// Round-Trip (lesson L2): a fresh, nonce-unique proof body the human carries out through an app
+    /// (WhatsApp) and back. The only thing that matters is that the exact bytes return — the body rides
+    /// inside so the file is a valid .pngmesh, but the proof is the byte-match on its sha256.
+    static let classRoundTrip: Int32 = 24
+    static let rtCols = ["body"]
+    static func writeRoundTrip(_ body: String) -> Data {
+        write(classRoundTrip, rtCols, [[body]], [[]], "ANA round-trip")
+    }
+
     struct Failure: LocalizedError {
         let reason: String
         var errorDescription: String? { reason }

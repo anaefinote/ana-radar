@@ -34,6 +34,7 @@ String mintProof(String lesson, String body, float amt) {
 }
 
 void drawEflex() {
+  eflexPoll();                                  // catch any round-trip proof that came back
   image(flatBgImg, 0, 0);
   flatHeader("eFLEX", "proofs you've earned", false);
 
@@ -49,13 +50,29 @@ void drawEflex() {
   textSizeQ(27 * fk);
   text("eFLEX  ·  " + rows.length + (rows.length == 1 ? " proof" : " proofs"), FX(426), FY(408));
 
-  // ---- dev: mint a test proof (real lessons will call mintProof themselves)
-  fill(20, 60, 54);
-  rrect(FX(246), FY(466), 360 * fk, 70 * fk, 20 * fk);
-  fill(#4DE2C4);
+  // ---- actions. iOS gets the real Round-Trip lesson beside the dev test button; Android gets the test only.
   textAlign(CENTER, CENTER);
-  textSizeQ(26 * fk);
-  boldTextF("+  Mint a test proof", FX(246) + 180 * fk, FY(466) + 35 * fk);
+  if (onIOS) {
+    // test proof (left)
+    fill(20, 60, 54);
+    rrect(FX(45), FY(466), 370 * fk, 70 * fk, 20 * fk);
+    fill(#4DE2C4);
+    textSizeQ(24 * fk);
+    boldTextF("+  Test proof", FX(45) + 185 * fk, FY(466) + 35 * fk);
+    // round-trip (right) — label reflects whether one is out and waiting
+    boolean waiting = rtPendingHash().length() > 0;
+    fill(waiting ? color(58, 46, 18) : color(44, 36, 16));
+    rrect(FX(437), FY(466), 370 * fk, 70 * fk, 20 * fk);
+    fill(#FFD147);
+    textSizeQ(waiting ? 22 * fk : 24 * fk);
+    boldTextF(waiting ? "Round-trip · waiting…" : "Start round-trip", FX(437) + 185 * fk, FY(466) + 35 * fk);
+  } else {
+    fill(20, 60, 54);
+    rrect(FX(246), FY(466), 360 * fk, 70 * fk, 20 * fk);
+    fill(#4DE2C4);
+    textSizeQ(26 * fk);
+    boldTextF("+  Mint a test proof", FX(246) + 180 * fk, FY(466) + 35 * fk);
+  }
 
   // ---- the pile, newest first
   float top = FY(600), rowH = 108 * fk;
@@ -90,12 +107,55 @@ void drawEflex() {
 
 void eflexTap(float mx, float my) {
   poke();
-  // mint-test button
-  if (mx >= FX(246) && mx <= FX(246) + 360 * fk && my >= FY(466) && my <= FY(466) + 70 * fk) {
-    String moment = (js != null) ? js.radarPeers() : "";              // whatever reality is in range
-    String nonce = hex((int) random(0x10000), 4) + hex((int) random(0x10000), 4);
-    String body = "ANAEFLEX1\nlesson: TEST\nmoment: " + moment + "\nnonce: " + nonce +
-                  "\nkey: " + ((js != null) ? js.flexKey() : "");
-    mintProof("TEST", body, 1.0);
+  boolean onRow = my >= FY(466) && my <= FY(466) + 70 * fk;
+  if (!onRow) return;
+  if (onIOS) {
+    if (mx >= FX(45) && mx <= FX(45) + 370 * fk) {                     // test proof (left)
+      mintProof("TEST", eflexBody("TEST"), 1.0);
+    } else if (mx >= FX(437) && mx <= FX(437) + 370 * fk) {            // start / re-send round-trip (right)
+      roundTripStart();
+    }
+  } else if (mx >= FX(246) && mx <= FX(246) + 360 * fk) {              // Android: test only
+    mintProof("TEST", eflexBody("TEST"), 1.0);
+  }
+}
+
+// A fresh, nonce-unique captured-moment body. The nonce makes every proof one-of-a-kind (replay is dead).
+String eflexBody(String lesson) {
+  String moment = (js != null) ? js.radarPeers() : "";                // whatever reality is in range
+  String nonce = hex((int) random(0x10000), 4) + hex((int) random(0x10000), 4);
+  return "ANAEFLEX1\nlesson: " + lesson + "\nmoment: " + moment + "\nnonce: " + nonce +
+         "\nkey: " + ((js != null) ? js.flexKey() : "");
+}
+
+// ---- ROUND-TRIP (L2): mint a fresh proof, share it out, remember its hash; mint for real when it returns.
+String rtPendingHash() {
+  if (js == null) return "";
+  String h = js.pref("rtPendingHash");
+  return (h == null) ? "" : h;
+}
+void roundTripStart() {
+  if (js == null) return;
+  String body = eflexBody("ROUNDTRIP");
+  String h = js.roundTripShare(body);                                 // native builds the file, pops the share sheet
+  if (h != null && h.length() > 0) {
+    js.setPref("rtPendingHash", h);
+    js.setPref("rtPendingBody", body);
+  }
+}
+void eflexPoll() {
+  if (!onIOS || js == null) return;
+  String got = js.roundTripInbox();                                   // sha256 of any round-trip files imported back
+  if (got == null || got.length() == 0) return;
+  String pend = rtPendingHash();
+  if (pend.length() == 0) return;
+  String[] hs = split(got, '\n');
+  for (int i = 0; i < hs.length; i++) {
+    if (hs[i].equals(pend)) {                                         // the exact bytes I sent came back — proof carried
+      String body = js.pref("rtPendingBody");
+      mintProof("ROUNDTRIP", (body != null && body.length() > 0) ? body : ("roundtrip\nhash: " + pend), 2.0);
+      js.setPref("rtPendingHash", "");
+      js.setPref("rtPendingBody", "");
+    }
   }
 }

@@ -274,6 +274,13 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             let s = gstInbox.joined(separator: "\n")
             gstInbox.removeAll()
             return s
+        // ROUND-TRIP (L2): share a fresh proof out; collect the hashes of any that came back.
+        case "roundTripShare":
+            return roundTripShare(arg(a, 0))        // builds the file, returns its sha256, pops the share sheet
+        case "roundTripInbox":
+            let s = rtInbox.joined(separator: "\n")  // sha256 of each round-trip file imported since last asked
+            rtInbox.removeAll()
+            return s
         case "gstAsk":
             let id = arg(a, 0), t = arg(a, 1), m = arg(a, 2), s = arg(a, 3)
             later { self.gstAsk(id, t, m, s) }
@@ -556,6 +563,29 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         share([meshURL, sideURL])
     }
 
+    /// ROUND-TRIP (L2): write the sketch's fresh proof body as a .pngmesh + .sha256 and pop the share
+    /// sheet so the human can carry it out through WhatsApp. Returns the file's sha256 — the sketch
+    /// remembers it and mints eFlex when the exact same hash comes back in via IMPORT.
+    private func roundTripShare(_ body: String) -> String {
+        let mesh = AnaMesh.writeRoundTrip(body)
+        let hash = AnaMesh.sha256(mesh)
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyyMMdd_HHmmss"
+        let name = "ana_roundtrip_\(fmt.string(from: Date())).pngmesh"
+        let dir = exportDir()
+        let meshURL = dir.appendingPathComponent(name), sideURL = dir.appendingPathComponent(name + ".sha256")
+        do {
+            try mesh.write(to: meshURL)
+            try Data(AnaMesh.sidecar(name: name, mesh: mesh).utf8).write(to: sideURL)
+        } catch {
+            toast("Round-trip share failed: \(error.localizedDescription)")
+            return ""
+        }
+        later { self.share([meshURL, sideURL]) }
+        return hash
+    }
+
     private func exportLog() {
         let u = exportDir().appendingPathComponent("ana_log.txt")
         do { try Data(AnaLog.readText().utf8).write(to: u) } catch { toast("Export failed"); return }
@@ -689,6 +719,11 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         for (h, m) in waitingMesh where waitingSidecar.contains(h) {
             waitingMesh[h] = nil
             waitingSidecar.remove(h)
+            if AnaMesh.classOf(m.1) == AnaMesh.classRoundTrip {   // ROUND-TRIP: a proof the human carried out and back
+                rtInbox.append(h)                         // hand its sha256 to the sketch; it mints if it matches what it sent
+                notes.append("Round-trip proof received \u{2713}")
+                continue
+            }
             let bc = BillCore.classOf(m.1)                // BILLS: a shared bill (40), a help receipt (41), a thank-you (42)
             if bc == BillCore.clsChat {                   // CHATNOTE: a message that came as a file
                 let f = m.1
@@ -755,6 +790,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     // Group Spend Technology, Phase 1: packs travel as .pngmesh + .sha256 (the default). The sketch (Gst.pde)
     // keeps the groups, pools and feed; here: send packs, take in received ones, and simple dialogs.
     private var gstInbox = [String]()                 // received pack rows, tab-separated, for the sketch
+    private var rtInbox = [String]()                  // ROUND-TRIP: sha256 of each round-trip .pngmesh imported back
     private var gstAnswers = [String: String]()       // dialog id -> "O\tvalues..." or "C"
 
     /// received packs: to the sketch; spend alerts also land on Pulse
