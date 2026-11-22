@@ -105,18 +105,37 @@ void drawConstellation(float cx, float cy, float R, String mtx) {
   float[] X = new float[n], Y = new float[n];
   for (int i = 0; i < n; i++) { X[i] = cx + C[i][0] * mdsScale; Y[i] = cy + C[i][1] * mdsScale; }
 
-  stroke(77, 226, 196, 70);                            // the rails: edges between devices
+  color base = (rdrTintHue >= 0) ? fenceCol(rdrTintHue) : color(77, 226, 196);    // fence colour when fenced
+  color core = (rdrTintHue >= 0) ? lerpColor(base, color(255, 255, 255), 0.45) : color(150, 255, 232);
+
+  stroke(red(base), green(base), blue(base), 70);      // the rails: edges between devices
   strokeWeight(2 * fk);
   for (int i = 0; i < n; i++)
     for (int j = i + 1; j < n; j++) line(X[i], Y[i], X[j], Y[j]);
   noStroke();
 
   for (int i = 1; i < n; i++) {                        // peer dots at real positions
-    for (int g = 4; g >= 1; g--) { fill(77, 226, 196, 30); ellipse(X[i], Y[i], (14+g*7)*fk, (14+g*7)*fk); }
-    fill(150, 255, 232, 235); ellipse(X[i], Y[i], 15 * fk, 15 * fk);
+    for (int g = 4; g >= 1; g--) { fill(red(base), green(base), blue(base), 30); ellipse(X[i], Y[i], (14+g*7)*fk, (14+g*7)*fk); }
+    fill(core); ellipse(X[i], Y[i], 15 * fk, 15 * fk);
   }
   fill(255, 255, 255, 235);                            // this phone, at centre
   ellipse(X[0], Y[0], 12 * fk, 12 * fk);
+}
+
+// ANA FENCE colour: a fenceId's hue (0..359) -> a vivid RGB, so a fence reads as one colour on
+// every member's scope. Manual HSV->RGB (s .72, v 1) to avoid touching the global colorMode.
+int rdrTintHue = -1;                                   // -1 = default teal; >=0 = active fence hue
+color fenceCol(int hue) {
+  float h = (((hue % 360) + 360) % 360), s = 0.72, v = 1.0;
+  float c = v * s, x = c * (1 - abs(((h / 60.0) % 2) - 1)), m = v - c;
+  float r, g, b;
+  if      (h <  60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else              { r = c; g = 0; b = x; }
+  return color((r + m) * 255, (g + m) * 255, (b + m) * 255);
 }
 
 // ---- orientation + smoothing state so the constellation settles instead of spinning

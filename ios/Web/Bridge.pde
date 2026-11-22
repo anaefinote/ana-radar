@@ -40,32 +40,36 @@ interface JavaScript {
   void gmHide();                      // leaving Archive: hide the GPU layer
   int sdkInt();                       // Android's API level (33 = Android 13)
   void openOwnInfo();                 // this app's own App info page (Allow restricted settings is in its menu)
-  String edition();                   // "statia" in ANA : STATIA (ANA's big sister), "" otherwise
-  String platform();                  // "ios" on iPhone / iPad (the page says), "android" otherwise
   void iphoneLink(boolean on);         // Android: receive the iPhone's notifications over Bluetooth. iOS: connect to Android ANA
   String iphoneState();
-  String iphoneTimes();                // "Linked 2 h 14 m · last notification 3 min ago" ("" when not linked)                // what that link is doing, in words ("Off" when off)
+  String iphoneTimes();                // Android: "Linked 2 h 14 m · last notification 3 min ago" ("" when not linked)                // what that link is doing, in words ("Off" when off)
   void copyText(String t);             // to the clipboard (the reader's COPY)
-  boolean iphoneDismiss(String key);  // clear that notification on the iPhone (iOS: through ANA on Android); false if not possible
+  boolean iphoneDismiss(String key);  // clear that notification on the iPhone (Bluetooth); false if it's gone / no link
   void radarOn(boolean on);            // RADAR: scan for nearby ANA devices (and beacon this one)
   int radarCount();                    // how many ANA devices are nearby right now
-  String radarPeers();                 // "count\tid8,rssi,age;..." strongest signal first
-  String walletText();                 // WATCH (iPhone): the wallets and their activity, tab-separated lines
+  String radarPeers();                 // "count\tid8,rssi,age,name;..." strongest signal first
+  void radarName(String n);            // the display name this phone broadcasts ("the name people see you as")
+  void fenceCreate(String name, int radius, int durMin);  // ANA FENCE: become a fence node (creator)
+  void fenceJoin(String fid);          // join a fence seen on the radar (adopt its fenceId)
+  void fenceLeave();                   // drop out of the current fence
+  String fenceInfo();                  // "fid\tname\thue\trole\tmembers\tt0\tt1" for my fence, or ""
+  String fenceOffers();                // fences nearby I'm not in: "fid,hue,count;..."
+  String walletText();                 // WATCH: the wallets and their activity, tab-separated lines
   boolean walletBusy();                // WATCH: checking right now
   void walletRefresh();                // WATCH: check every wallet now
   String lessonsText();                // LESSONS: one line per coin a lesson taught ANA (id, name, ticker, version, servers)
+  void lessonsOpen();                  // LESSONS: the list (remove one, or import a lesson)
   String billsText();                  // BILLS: "open TAB eFLEX-from-bills TAB all"
   void billsOpen();
   void chatOpen();
   String chatList();                   // CHATNOTE: one line per message, oldest first: mine \t name \t key id \t age s \t route \t text
   void chatWrite();
-  void findAdd();                      // iPhone FIND (experimental): type any app name, it becomes a tile
+  void findAdd();                      // FIND (experimental): type any app name, it becomes a tile
   void findRemove(String name);
   void chatClear(String key);          // CHATNOTE: forget one person's messages                    // CHATNOTE: the phone's own box to type in, then the route                     // CHATNOTE (experimental): messages, and send by Bluetooth / Wi-Fi / Internet / Light                    // BILLS: the list (new bill, paid bill, help, import)
-  void lessonsOpen();                  // LESSONS: the list (remove one, or import a lesson)
   void walletAdd();                    // WATCH: the "watch an address" dialog
   void walletEdit(String id);          // WATCH: rename / copy / check / stop watching one wallet
-  void walletReveal();                 // SUB-WATCH: Check Now was held: Face ID, then open
+  void walletReveal();                 // SUB-WATCH: Check Now was held: Face ID / fingerprint, then open
   boolean walletBack();                // SUB-WATCH: open right now
   void walletFront();                  // SUB-WATCH: close it (back to the front face)
   String walletTotals();               // GST: "all TAB front", the dollar value of every watched wallet / those on the front

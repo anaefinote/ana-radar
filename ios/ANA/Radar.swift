@@ -26,6 +26,7 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
         let firstSeen: Date
         var lastSeen: Date
         var name: String
+        var fid: String             // the fence this peer is broadcasting, or "-"
         var row: [String: Int]      // the peer's own measured RSSI to others, keyed by their selfId
     }
 
@@ -40,6 +41,13 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     private let fresh: TimeInterval = 15
     private var sweep: Timer?
     private var lastPayload = ""
+
+    // ANA FENCE: shared fenceId (3 hex) + a time window. "-" = not in a fence.
+    private(set) var myFid = "-"
+    private var myFenceName = ""
+    private var myHue = 0
+    private var myRole = 0           // 0 = member, 1 = creator
+    private var fenceT0: TimeInterval = 0, fenceT1: TimeInterval = 0
 
     /// 3 hex of this phone's key — the stable id every phone agrees on. Random fallback if no key yet.
     private lazy var selfId: String = {
@@ -106,25 +114,30 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
     private func encRssi(_ r: Int) -> Character { Character(UnicodeScalar(UInt8(33 + max(0, min(60, -r - 40))))) }
     private func decRssi(_ c: Character) -> Int { -(Int(c.asciiValue ?? 33) - 33) - 40 }
 
+    // "id~name~fid~row"  (fid "-" when not fenced). Fenced beacons carry one fewer peer row so the
+    // fenceId fits iOS's ~27-byte local name; MDS fills the missing edge with the mean distance.
     private func packPayload() -> String {
-        var s = selfId + "~" + String(cleanName(beaconName).prefix(5)) + "~"
-        let mine = dedupedById().sorted { $0.smRssi > $1.smRssi }.prefix(4)
+        var s = selfId + "~" + String(cleanName(beaconName).prefix(5)) + "~" + myFid + "~"
+        let rm = myFid == "-" ? 4 : 3
+        let mine = dedupedById().sorted { $0.smRssi > $1.smRssi }.prefix(rm)
         for p in mine { s += p.selfId + String(encRssi(p.smRssi)) }
         return s
     }
 
-    private func parsePayload(_ s: String) -> (String, String, [String: Int])? {
+    private func parsePayload(_ s: String) -> (String, String, String, [String: Int])? {
         let parts = s.components(separatedBy: "~")
         guard parts.count >= 3, parts[0].count == 3 else { return nil }
         let sid = parts[0], name = parts[1]
-        let body = Array(parts[2...].joined(separator: "~"))
+        var fid = "-", rowStart = 2
+        if parts.count >= 4 { fid = parts[2]; rowStart = 3 }          // new format: id~name~fid~row
+        let body = Array(parts[rowStart...].joined(separator: "~"))
         var row: [String: Int] = [:]
         var i = 0
         while i + 4 <= body.count {
             row[String(body[i..<i+3])] = decRssi(body[i+3])
             i += 4
         }
-        return (sid, name, row)
+        return (sid, name, fid, row)
     }
 
     /// snapshot-v2:  "count \t id,rssi,age,name;…  \t  matrixRow;matrixRow;…"
@@ -135,7 +148,7 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
         let ordered = withId.sorted { $0.selfId < $1.selfId }
         let listed = withId.sorted { $0.smRssi > $1.smRssi }
         let peerRows = listed.map { p in
-            "\(p.selfId),\(p.smRssi),\(Int(now.timeIntervalSince(p.lastSeen))),\(cleanName(p.name))"
+            "\(p.selfId),\(p.smRssi),\(Int(now.timeIntervalSince(p.lastSeen))),\(cleanName(p.name)),\(p.fid)"
         }.joined(separator: ";")
 
         let ids = [selfId] + ordered.map { $0.selfId }
@@ -198,8 +211,8 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
            let md = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data, md.count > 2 {
             raw = String(data: md.subdata(in: 2..<md.count), encoding: .utf8)
         }
-        var sid = "", nm = "", prow: [String: Int] = [:]
-        if let s = raw, let parsed = parsePayload(s) { sid = parsed.0; nm = parsed.1; prow = parsed.2 }
+        var sid = "", nm = "", pfid = "-", prow: [String: Int] = [:]
+        if let s = raw, let parsed = parsePayload(s) { sid = parsed.0; nm = parsed.1; pfid = parsed.2; prow = parsed.3 }
         else { nm = raw ?? "" }                        // old-format beacon: plain name, no matrix row
         let resolved = cleanName(nm).isEmpty ? (p.name ?? "ANA device") : cleanName(nm)
         let r = RSSI.intValue
@@ -208,11 +221,11 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
             peer.rssi = r
             peer.smRssi = Int(0.6 * Double(peer.smRssi) + 0.4 * Double(r))   // EMA smoothing
             peer.lastSeen = now; peer.name = resolved
-            if !sid.isEmpty { peer.selfId = sid; peer.row = prow }
+            if !sid.isEmpty { peer.selfId = sid; peer.fid = pfid; peer.row = prow }
             peers[p.identifier] = peer
         } else {
             peers[p.identifier] = Peer(id: p.identifier, selfId: sid, rssi: r, smRssi: r,
-                                       firstSeen: now, lastSeen: now, name: resolved, row: prow)
+                                       firstSeen: now, lastSeen: now, name: resolved, fid: pfid, row: prow)
             onChange?()
         }
     }
@@ -244,5 +257,54 @@ final class Radar: NSObject, CBCentralManagerDelegate, CBPeripheralManagerDelega
 
     func peripheralManagerDidUpdateState(_ pm: CBPeripheralManager) {
         if pm.state == .poweredOn { startBeacon() }
+    }
+
+    // MARK: ANA FENCE
+    // fenceId is a deterministic 3-hex of the contract. It travels as a string (beacon / QR), so it
+    // need not match Android's derivation — a joiner adopts the id it receives, never recomputes it.
+    private func fhash(_ s: String) -> String {
+        var h: UInt32 = 2166136261
+        for b in s.utf8 { h = (h ^ UInt32(b)) &* 16777619 }
+        return String(format: "%03x", Int(h % 4096))
+    }
+    private func hueOf(_ fid: String) -> Int { (Int(fid, radix: 16) ?? 0) % 360 }
+
+    func fenceCreate(_ name: String, _ radiusM: Int, _ durMin: Int) {
+        myFenceName = cleanName(name).isEmpty ? "Fence" : cleanName(name)
+        fenceT0 = Date().timeIntervalSince1970
+        fenceT1 = fenceT0 + Double(max(1, durMin)) * 60
+        myFid = fhash(myFenceName + "|" + String(Int(fenceT0)) + "|" + selfId)
+        myHue = hueOf(myFid); myRole = 1
+        refreshBeacon()
+    }
+    func fenceJoin(_ fid: String) {
+        let f = fid.lowercased()
+        guard f.count == 3, f != "-" else { return }
+        myFid = f; myHue = hueOf(f); myRole = 0
+        if myFenceName.isEmpty { myFenceName = "Fence" }
+        if fenceT0 == 0 { fenceT0 = Date().timeIntervalSince1970 }
+        refreshBeacon()
+    }
+    func fenceLeave() {
+        myFid = "-"; myFenceName = ""; myHue = 0; myRole = 0; fenceT0 = 0; fenceT1 = 0
+        refreshBeacon()
+    }
+    /// "fid \t name \t hue \t role \t members \t t0 \t t1", or "".
+    func fenceInfo() -> String {
+        if myFid == "-" { return "" }
+        var set = Set<String>()
+        for p in peers.values where !p.selfId.isEmpty && p.fid == myFid { set.insert(p.selfId) }
+        let members = 1 + set.count
+        return "\(myFid)\t\(myFenceName)\t\(myHue)\t\(myRole)\t\(members)\t\(Int(fenceT0))\t\(Int(fenceT1))"
+    }
+    /// Fences seen nearby I'm not in:  "fid,hue,count ; …".
+    func fenceOffers() -> String {
+        var seen: [String: Set<String>] = [:]
+        var order: [String] = []
+        for p in peers.values where p.fid != "-" && p.fid != myFid && !p.selfId.isEmpty {
+            if seen[p.fid] == nil { seen[p.fid] = []; order.append(p.fid) }
+            seen[p.fid]?.insert(p.selfId)
+        }
+        return order.map { "\($0),\(hueOf($0)),\(seen[$0]?.count ?? 1)" }.joined(separator: ";")
     }
 }

@@ -213,6 +213,20 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             let nm = arg(a, 0)
             later { Radar.shared.setName(nm) }
             return true
+        // ANA FENCE
+        case "fenceCreate":
+            let nm = arg(a, 0), rad = Int(arg(a, 1)) ?? 25, dur = Int(arg(a, 2)) ?? 480
+            later { Radar.shared.fenceCreate(nm, rad, dur) }
+            return true
+        case "fenceJoin":
+            let fid = arg(a, 0)
+            later { Radar.shared.fenceJoin(fid) }
+            return true
+        case "fenceLeave":
+            later { Radar.shared.fenceLeave() }
+            return true
+        case "fenceInfo": return Radar.shared.fenceInfo()
+        case "fenceOffers": return Radar.shared.fenceOffers()
         case "walletText": return Wallets.shared.pageText()
         case "lessonsText": return Lessons.shared.text()
         case "lessonsOpen": later { self.showLessons() }; return true
