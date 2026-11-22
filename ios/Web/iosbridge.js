@@ -11,6 +11,7 @@ window.__ANA_IOS = true;
     'manualEntry', 'addReminder', 'exportLog', 'exportPngmesh', 'importFiles', 'iphoneLink', 'iphoneState', 'iphoneTimes', 'iphoneDismiss', 'copyText',
     'walletText', 'walletBusy', 'walletRefresh', 'walletAdd', 'walletEdit', 'lessonsText', 'lessonsOpen', 'billsText', 'billsOpen', 'chatOpen', 'chatList', 'chatWrite', 'chatClear', 'findAdd', 'findRemove',
     'walletReveal', 'walletBack', 'walletFront', 'radarOn', 'radarCount', 'radarPeers', 'radarName',
+    'fenceCreate', 'fenceJoin', 'fenceRequest', 'fenceAccept', 'fenceDecline', 'fenceLeave', 'fenceInfo', 'fenceKnockers', 'fenceOffers',
     'walletTotals', 'gstSend', 'gstInbox', 'gstAsk', 'gstPick', 'gstAnswer',
     'flexKey', 'flexSign', 'flexVerify', 'flexHash'];
   var A = {};
