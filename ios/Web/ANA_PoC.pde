@@ -46,7 +46,7 @@ int lastW = -1, lastH = -1;
 float listTop, listBottom, stripY;
 
 // scrolling: one position per tab; the ball rolls with it
-float[] tabScroll = new float[5];
+float[] tabScroll = new float[7];
 float listVel = 0;
 float seenScroll = 0;
 int seenTab = -1;
@@ -121,6 +121,7 @@ void draw() {
     else if (tab == T_ARCHIVE) drawMaze();
     else if (tab == T_TIMELINE) drawTimeline2();
     else if (tab == T_RADAR) drawRadar();
+    else if (tab == T_EFLEX) drawEflex();
     else drawSettings2();
     drawReader();                      // a notification being read (Reader.pde), over the screen
     drawFlexChip();                    // FLEX: the chip at the top, and the wallet when it's open (Flex.pde)
@@ -444,6 +445,7 @@ void mouseReleased() {
       else if (tab == T_ARCHIVE) mazeTap(mouseX, mouseY);
       else if (tab == T_TIMELINE) timelineTap(mouseX, mouseY);
       else if (tab == T_RADAR) radarTap(mouseX, mouseY);
+      else if (tab == T_EFLEX) eflexTap(mouseX, mouseY);
       else settingsTap(mouseX, mouseY);
     }
     else if (tab == T_TIMELINE && onCalendar(pressX, pressY)) timelineSwipe(mouseX - pressX);
@@ -465,7 +467,7 @@ void mouseReleased() {
 
 // the flat screens: Settings always; Pulse / Archive / Timeline when the control ball is off
 boolean flatTab() {
-  return tab == T_SETTINGS || tab == T_RADAR || (!ballOn && tab != T_APPIFY);
+  return tab == T_SETTINGS || tab == T_RADAR || tab == T_EFLEX || (!ballOn && tab != T_APPIFY);
 }
 
 void setTab(int t) {

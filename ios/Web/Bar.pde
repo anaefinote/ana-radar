@@ -2,13 +2,13 @@
 // Rounded corners are drawn with ellipses and arcs (rect() with a radius isn't in 1.5.1).
 
 // APPify sits in the centre and is the home screen; after the first run ANA opens on the last tab used
-final int T_PULSE = 0, T_ARCHIVE = 1, T_APPIFY = 2, T_TIMELINE = 3, T_SETTINGS = 4, T_RADAR = 5;
-String[] tabName = { "Pulse", "Archive", "APPify", "Timeline", "Settings", "Radar" };
-final int NTABS = 6;
+final int T_PULSE = 0, T_ARCHIVE = 1, T_APPIFY = 2, T_TIMELINE = 3, T_SETTINGS = 4, T_RADAR = 5, T_EFLEX = 6;
+String[] tabName = { "Pulse", "Archive", "APPify", "Timeline", "Settings", "Radar", "eFLEX" };
+final int NTABS = 7;
 
 // the tabs shown in the bar (iOS: no APPify)
 int[] barTabs() {
-  int[] t = { T_PULSE, T_ARCHIVE, T_APPIFY, T_TIMELINE, T_RADAR, T_SETTINGS };
+  int[] t = { T_PULSE, T_ARCHIVE, T_APPIFY, T_TIMELINE, T_RADAR, T_EFLEX, T_SETTINGS };
   return t;
 }
 int tab = T_APPIFY;
@@ -174,6 +174,13 @@ void drawTabIcon(int i, float cx, float cy, boolean on) {
     fill(on ? #4DE2C4 : #3A9E8C);
     ellipse(cx, cy, 3.4 * u, 3.4 * u);
     ellipse(cx + s * 0.55, cy - s * 0.35, 3 * u, 3 * u);
+  }
+  else if (i == T_EFLEX) {                   // eFLEX: a diamond (a sealed proof)
+    stroke(on ? #FFD147 : #B8922E);
+    line(cx, cy - s, cx + s * 0.8, cy);
+    line(cx + s * 0.8, cy, cx, cy + s);
+    line(cx, cy + s, cx - s * 0.8, cy);
+    line(cx - s * 0.8, cy, cx, cy - s);
   }
   else {                                     // sliders
     stroke(on ? #C3C8D2 : #8D929C);
