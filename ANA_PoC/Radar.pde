@@ -93,6 +93,10 @@ void drawRadar() {
 
   // ---- ANA FENCE controls, between the scope and the list
   drawFenceStrip(fenced, fRole, fName, fHue, fMembers);
+  if (sealDbg.length() > 0) {                       // Seal breadcrumb (temporary diagnostic)
+    fill(#FFD147); textAlign(CENTER, CENTER); textSizeQ(20 * fk);
+    text("seal → " + sealDbg, FX(426), FY(876));
+  }
 
   // ---- host gate takes the list's place while someone's knocking; otherwise the device list
   String knockers = (fenced && fRole == 1 && js != null) ? js.fenceKnockers() : "";
@@ -240,12 +244,15 @@ void drawFenceStrip(boolean fenced, int fRole, String fName, int fHue, int fMemb
 
 // Seal the fence: write a signed record of who was inside, over the window, as a pngmesh + sha256.
 // The signed roster IS the seal (v0.3) — host signs it with its FLEX key; anyone can verify later.
+String sealDbg = "";                               // breadcrumb shown on the radar screen: how far Seal gets
+
 void fenceSeal() {
-  if (js == null) return;
+  sealDbg = "tapped";
+  if (js == null) { sealDbg = "no js"; return; }
   String fInfo = js.fenceInfo();
-  if (fInfo.length() == 0) return;
+  if (fInfo.length() == 0) { sealDbg = "no live fence"; return; }
   String[] fi = split(fInfo, '\t');
-  if (fi.length < 2) return;
+  if (fi.length < 2) { sealDbg = "fence info thin (" + fi.length + ")"; return; }
   String fid = fi[0], name = fi[1];
   String data = js.radarPeers();
   String ps = rdrField(data, 1);
@@ -269,7 +276,9 @@ void fenceSeal() {
   String sig = js.flexSign(b.toString());          // host signs the whole roster
   b.append("sig: ").append(sig).append("\n");
   b.append("sha256: ").append(js.flexHash(b.toString())).append("\n");
+  sealDbg = "calling sealExport (" + b.length() + "b)";
   js.sealExport(b.toString());                     // seal the payload itself -> .pngmesh + .sha256, shareable
+  sealDbg = "sealExport returned";
 }
 
 void radarTap(float mx, float my) {
