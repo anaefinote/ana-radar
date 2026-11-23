@@ -260,32 +260,29 @@ void fenceSeal() {
   String ps = rdrField(data, 1);
   String[] rows = ps.length() == 0 ? new String[0] : split(ps, ';');
 
-  StringBuilder b = new StringBuilder();
-  b.append("ANASEAL1\n");
-  b.append("fence: ").append(fid).append("  ").append(name).append("\n");
-  b.append("sealed: ").append(nf(year(), 4)).append("-").append(nf(month(), 2)).append("-").append(nf(day(), 2))
-   .append(" ").append(nf(hour(), 2)).append(":").append(nf(minute(), 2)).append("\n");
-  sealDbg = "4 pre-key";
-  b.append("host_key: ").append(js.flexKey()).append("\n");
-  sealDbg = "5 got key";
-  b.append("member: host  ").append(gMyName).append("\n");
+  // Plain String, not StringBuilder: Processing.js (the sketch's runtime in the WebView) has no
+  // java.lang.StringBuilder, so new StringBuilder() threw here and the whole seal silently died.
+  String b = "ANASEAL1\n";
+  b += "fence: " + fid + "  " + name + "\n";
+  b += "sealed: " + nf(year(), 4) + "-" + nf(month(), 2) + "-" + nf(day(), 2) +
+       " " + nf(hour(), 2) + ":" + nf(minute(), 2) + "\n";
+  b += "host_key: " + js.flexKey() + "\n";
+  b += "member: host  " + gMyName + "\n";
   for (int i = 0; i < rows.length; i++) {
     String[] f = split(rows[i], ',');
     if (f.length < 5) continue;
     if (trim(f[4]).equals(fid)) {
       String nm = (f.length > 3 && trim(f[3]).length() > 0) ? trim(f[3]) : "";
-      b.append("member: ").append(f[0]).append("  ").append(nm).append("\n");
+      b += "member: " + f[0] + "  " + nm + "\n";
     }
   }
-  sealDbg = "6 pre-sign";
-  String sig = js.flexSign(b.toString());          // host signs the whole roster
-  sealDbg = "7 got sig " + sig.length();
-  b.append("sig: ").append(sig).append("\n");
-  sealDbg = "8 pre-hash";
-  b.append("sha256: ").append(js.flexHash(b.toString())).append("\n");
-  sealDbg = "calling sealExport (" + b.length() + "b)";
-  js.sealExport(b.toString());                     // seal the payload itself -> .pngmesh + .sha256, shareable
-  sealDbg = "sealExport returned";
+  sealDbg = "signing";
+  String sig = js.flexSign(b);                     // host signs the whole roster
+  b += "sig: " + sig + "\n";
+  b += "sha256: " + js.flexHash(b) + "\n";
+  sealDbg = "exporting";
+  js.sealExport(b);                                // seal the payload itself -> .pngmesh + .sha256, shareable
+  sealDbg = "";                                    // clear the diagnostic on success
 }
 
 void radarTap(float mx, float my) {
