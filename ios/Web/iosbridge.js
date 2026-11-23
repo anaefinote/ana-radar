@@ -13,7 +13,7 @@ window.__ANA_IOS = true;
     'walletReveal', 'walletBack', 'walletFront', 'radarOn', 'radarCount', 'radarPeers', 'radarName',
     'fenceCreate', 'fenceJoin', 'fenceRequest', 'fenceAccept', 'fenceDecline', 'fenceLeave', 'fenceInfo', 'fenceKnockers', 'fenceOffers',
     'walletTotals', 'gstSend', 'gstInbox', 'gstAsk', 'gstPick', 'gstAnswer',
-    'roundTripShare', 'roundTripInbox',
+    'roundTripShare', 'roundTripInbox', 'sealExport',
     'flexKey', 'flexSign', 'flexVerify', 'flexHash'];
   var A = {};
   names.forEach(function (n) {

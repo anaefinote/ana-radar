@@ -81,6 +81,7 @@ interface JavaScript {
   String gstInbox();                   // GST: packs received since last asked (tab-separated rows, one per line)
   String roundTripShare(String body);  // L2: write body as .pngmesh, pop share sheet, return its sha256 (iOS)
   String roundTripInbox();             // L2: sha256 of each round-trip .pngmesh imported back since last asked
+  void sealExport(String body);        // FENCE v0.3: seal this payload as a .pngmesh + .sha256 and share it
   void gstAsk(String id, String title, String msg, String spec);     // GST: a dialog with fields ("label|default|number" lines)
   void gstPick(String id, String title, String items);               // GST: a list to pick from (one item per line)
   String flexKey();                    // FLEX: this phone's public signing key (base64)

@@ -269,7 +269,7 @@ void fenceSeal() {
   String sig = js.flexSign(b.toString());          // host signs the whole roster
   b.append("sig: ").append(sig).append("\n");
   b.append("sha256: ").append(js.flexHash(b.toString())).append("\n");
-  js.exportPngmesh(b.toString());                  // -> .pngmesh + .pngmesh.sha256, shareable
+  js.sealExport(b.toString());                     // seal the payload itself -> .pngmesh + .sha256, shareable
 }
 
 void radarTap(float mx, float my) {

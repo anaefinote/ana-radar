@@ -32,6 +32,14 @@ enum AnaMesh {
         write(classRoundTrip, rtCols, [[body]], [[]], "ANA round-trip")
     }
 
+    /// Fence seal (v0.3): a signed roster of who was inside a fence over its window, carried as a
+    /// .pngmesh so it can be shared and verified later. The payload rides in a single row.
+    static let classSeal: Int32 = 25
+    static let sealCols = ["seal"]
+    static func writeSeal(_ body: String) -> Data {
+        write(classSeal, sealCols, [[body]], [[]], "ANA fence seal")
+    }
+
     struct Failure: LocalizedError {
         let reason: String
         var errorDescription: String? { reason }

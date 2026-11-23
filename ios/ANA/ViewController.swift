@@ -281,6 +281,10 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             let s = rtInbox.joined(separator: "\n")  // sha256 of each round-trip file imported since last asked
             rtInbox.removeAll()
             return s
+        case "sealExport":                           // FENCE SEAL (v0.3): share a signed roster as a .pngmesh
+            let body = arg(a, 0)
+            later { self.sealExport(body) }
+            return true
         case "gstAsk":
             let id = arg(a, 0), t = arg(a, 1), m = arg(a, 2), s = arg(a, 3)
             later { self.gstAsk(id, t, m, s) }
@@ -585,6 +589,26 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         }
         later { self.share([meshURL, sideURL]) }
         return hash
+    }
+
+    /// FENCE SEAL (v0.3): write the host's signed roster as a .pngmesh + .sha256 and pop the share sheet.
+    /// Unlike exportPngmesh (which exports existing log lines by index), this seals the payload itself.
+    private func sealExport(_ body: String) {
+        let mesh = AnaMesh.writeSeal(body)
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyyMMdd_HHmmss"
+        let name = "ana_fenceseal_\(fmt.string(from: Date())).pngmesh"
+        let dir = exportDir()
+        let meshURL = dir.appendingPathComponent(name), sideURL = dir.appendingPathComponent(name + ".sha256")
+        do {
+            try mesh.write(to: meshURL)
+            try Data(AnaMesh.sidecar(name: name, mesh: mesh).utf8).write(to: sideURL)
+        } catch {
+            toast("Seal failed: \(error.localizedDescription)")
+            return
+        }
+        share([meshURL, sideURL])
     }
 
     private func exportLog() {
