@@ -40,6 +40,23 @@ enum AnaMesh {
         write(classSeal, sealCols, [[body]], [[]], "ANA fence seal")
     }
 
+    /// Co-Sign (lesson L1): two phones in BLE range both sign one shared moment. The body (commitment
+    /// or finished moment) rides in one row; the counterparty reads it back byte-exact to verify sigs.
+    static let classCoSign: Int32 = 26          // hop 1: A's signed commitment
+    static let classCoSignReply: Int32 = 27     // hop 2: the full moment + both signatures
+    static func writeCoSign(_ body: String) -> Data {
+        write(classCoSign, ["cs"], [[body]], [[]], "ANA co-sign")
+    }
+    static func writeCoSignReply(_ body: String) -> Data {
+        write(classCoSignReply, ["cs"], [[body]], [[]], "ANA co-sign reply")
+    }
+    static func readCoSign(_ d: Data) -> String {
+        (try? read(d, want: classCoSign, wantCols: ["cs"]))?.first?.first ?? ""
+    }
+    static func readCoSignReply(_ d: Data) -> String {
+        (try? read(d, want: classCoSignReply, wantCols: ["cs"]))?.first?.first ?? ""
+    }
+
     struct Failure: LocalizedError {
         let reason: String
         var errorDescription: String? { reason }

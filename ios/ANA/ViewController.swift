@@ -285,6 +285,15 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             let body = arg(a, 0)
             later { self.sealExport(body) }
             return true
+        case "coSignRequest":                         // CO-SIGN hop 1: share A's commitment, return its hash
+            return coSignShare(arg(a, 0), reply: false)
+        case "coSignReply":                           // CO-SIGN hop 2: share the full moment + both sigs
+            _ = coSignShare(arg(a, 0), reply: true)
+            return true
+        case "coSignInbox":
+            let s = coSignInbox.joined(separator: "\n@@@\n")
+            coSignInbox.removeAll()
+            return s
         case "gstAsk":
             let id = arg(a, 0), t = arg(a, 1), m = arg(a, 2), s = arg(a, 3)
             later { self.gstAsk(id, t, m, s) }
@@ -591,6 +600,29 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         return hash
     }
 
+    /// CO-SIGN (L1): write the commitment (hop 1) or the finished moment (hop 2) as a .pngmesh + .sha256
+    /// and pop the share sheet so the other phone can carry it. Returns the file's sha256.
+    @discardableResult
+    private func coSignShare(_ body: String, reply: Bool) -> String {
+        let mesh = reply ? AnaMesh.writeCoSignReply(body) : AnaMesh.writeCoSign(body)
+        let hash = AnaMesh.sha256(mesh)
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyyMMdd_HHmmss"
+        let name = "ana_cosign_\(fmt.string(from: Date())).pngmesh"
+        let dir = exportDir()
+        let meshURL = dir.appendingPathComponent(name), sideURL = dir.appendingPathComponent(name + ".sha256")
+        do {
+            try mesh.write(to: meshURL)
+            try Data(AnaMesh.sidecar(name: name, mesh: mesh).utf8).write(to: sideURL)
+        } catch {
+            toast("Co-sign share failed: \(error.localizedDescription)")
+            return ""
+        }
+        later { self.share([meshURL, sideURL]) }
+        return hash
+    }
+
     /// FENCE SEAL (v0.3): write the host's signed roster as a .pngmesh + .sha256 and pop the share sheet.
     /// Unlike exportPngmesh (which exports existing log lines by index), this seals the payload itself.
     private func sealExport(_ body: String) {
@@ -751,6 +783,18 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
                 notes.append("Round-trip proof received \u{2713}")
                 continue
             }
+            if AnaMesh.classOf(m.1) == AnaMesh.classCoSign {       // CO-SIGN hop 1: a signed commitment from A
+                let b = AnaMesh.readCoSign(m.1)
+                if !b.isEmpty { coSignInbox.append("REQ\t" + b) }
+                notes.append("Co-sign request received")
+                continue
+            }
+            if AnaMesh.classOf(m.1) == AnaMesh.classCoSignReply {  // CO-SIGN hop 2: the full moment + both sigs
+                let b = AnaMesh.readCoSignReply(m.1)
+                if !b.isEmpty { coSignInbox.append("REPLY\t" + b) }
+                notes.append("Co-sign reply received")
+                continue
+            }
             let bc = BillCore.classOf(m.1)                // BILLS: a shared bill (40), a help receipt (41), a thank-you (42)
             if bc == BillCore.clsChat {                   // CHATNOTE: a message that came as a file
                 let f = m.1
@@ -818,6 +862,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     // keeps the groups, pools and feed; here: send packs, take in received ones, and simple dialogs.
     private var gstInbox = [String]()                 // received pack rows, tab-separated, for the sketch
     private var rtInbox = [String]()                  // ROUND-TRIP: sha256 of each round-trip .pngmesh imported back
+    private var coSignInbox = [String]()              // CO-SIGN: "REQ\t<body>" / "REPLY\t<body>" of each imported co-sign file
     private var gstAnswers = [String: String]()       // dialog id -> "O\tvalues..." or "C"
 
     /// received packs: to the sketch; spend alerts also land on Pulse

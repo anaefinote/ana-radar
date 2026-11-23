@@ -93,6 +93,8 @@ void drawRadar() {
 
   // ---- ANA FENCE controls, between the scope and the list
   drawFenceStrip(fenced, fRole, fName, fHue, fMembers);
+  coSignPoll();                                     // catch an incoming co-sign request/reply
+  flashDraw();
 
   // ---- host gate takes the list's place while someone's knocking; otherwise the device list
   String knockers = (fenced && fRole == 1 && js != null) ? js.fenceKnockers() : "";

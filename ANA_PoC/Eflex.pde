@@ -50,6 +50,7 @@ String mintProof(String lesson, String body, float amt) {
 
 void drawEflex() {
   eflexPoll();                                  // catch any round-trip proof that came back
+  coSignPoll();                                 // catch an incoming co-sign request/reply
   image(flatBgImg, 0, 0);
   flatHeader("eFLEX", "proofs you've earned", false);
 
@@ -65,21 +66,29 @@ void drawEflex() {
   textSizeQ(27 * fk);
   text("eFLEX  ·  " + rows.length + (rows.length == 1 ? " proof" : " proofs"), FX(426), FY(408));
 
-  // ---- actions: the dev test button (left) and the real Round-Trip lesson (right). Both platforms.
+  // ---- actions: Test proof, the Round-Trip lesson, and the Co-Sign lesson. All platforms.
   textAlign(CENTER, CENTER);
+  float bw = 240 * fk, bh = 70 * fk, by = FY(466);
   // test proof (left)
   fill(20, 60, 54);
-  rrect(FX(45), FY(466), 370 * fk, 70 * fk, 20 * fk);
+  rrect(FX(45), by, bw, bh, 18 * fk);
   fill(#4DE2C4);
-  textSizeQ(24 * fk);
-  boldTextF("+  Test proof", FX(45) + 185 * fk, FY(466) + 35 * fk);
-  // round-trip (right) — label reflects whether one is out and waiting
+  textSizeQ(22 * fk);
+  boldTextF("+  Test", FX(45) + 120 * fk, by + 35 * fk);
+  // round-trip (middle)
   boolean waiting = rtPendingHash().length() > 0;
   fill(waiting ? color(58, 46, 18) : color(44, 36, 16));
-  rrect(FX(437), FY(466), 370 * fk, 70 * fk, 20 * fk);
+  rrect(FX(300), by, bw, bh, 18 * fk);
   fill(#FFD147);
-  textSizeQ(waiting ? 22 * fk : 24 * fk);
-  boldTextF(waiting ? "Round-trip · waiting…" : "Start round-trip", FX(437) + 185 * fk, FY(466) + 35 * fk);
+  textSizeQ(waiting ? 18 * fk : 22 * fk);
+  boldTextF(waiting ? "Round-trip…" : "Round-trip", FX(300) + 120 * fk, by + 35 * fk);
+  // co-sign (right)
+  boolean csw = coSignWaiting();
+  fill(csw ? color(26, 42, 64) : color(18, 30, 48));
+  rrect(FX(555), by, bw, bh, 18 * fk);
+  fill(#7FB0FF);
+  textSizeQ(csw ? 18 * fk : 22 * fk);
+  boldTextF(csw ? "Co-sign…" : "Co-sign", FX(555) + 120 * fk, by + 35 * fk);
 
   // ---- the pile, newest first
   float top = FY(600), rowH = 108 * fk;
@@ -110,16 +119,20 @@ void drawEflex() {
       text("sealed #" + f[2].substring(0, min(16, f[2].length())), FX(132), y + 96 * fk);
     }
   }
+  flashDraw();
 }
 
 void eflexTap(float mx, float my) {
   poke();
   boolean onRow = my >= FY(466) && my <= FY(466) + 70 * fk;
   if (!onRow) return;
-  if (mx >= FX(45) && mx <= FX(45) + 370 * fk) {                       // test proof (left)
+  float bw = 240 * fk;
+  if (mx >= FX(45) && mx <= FX(45) + bw) {                             // test proof
     mintProof("TEST", eflexBody("TEST"), 1.0);
-  } else if (mx >= FX(437) && mx <= FX(437) + 370 * fk) {              // start / re-send round-trip (right)
+  } else if (mx >= FX(300) && mx <= FX(300) + bw) {                    // start / re-send round-trip
     roundTripStart();
+  } else if (mx >= FX(555) && mx <= FX(555) + bw) {                    // co-sign the nearest phone
+    coSignStart();
   }
 }
 
