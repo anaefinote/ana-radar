@@ -65,29 +65,21 @@ void drawEflex() {
   textSizeQ(27 * fk);
   text("eFLEX  ·  " + rows.length + (rows.length == 1 ? " proof" : " proofs"), FX(426), FY(408));
 
-  // ---- actions. iOS gets the real Round-Trip lesson beside the dev test button; Android gets the test only.
+  // ---- actions: the dev test button (left) and the real Round-Trip lesson (right). Both platforms.
   textAlign(CENTER, CENTER);
-  if (onIOS) {
-    // test proof (left)
-    fill(20, 60, 54);
-    rrect(FX(45), FY(466), 370 * fk, 70 * fk, 20 * fk);
-    fill(#4DE2C4);
-    textSizeQ(24 * fk);
-    boldTextF("+  Test proof", FX(45) + 185 * fk, FY(466) + 35 * fk);
-    // round-trip (right) — label reflects whether one is out and waiting
-    boolean waiting = rtPendingHash().length() > 0;
-    fill(waiting ? color(58, 46, 18) : color(44, 36, 16));
-    rrect(FX(437), FY(466), 370 * fk, 70 * fk, 20 * fk);
-    fill(#FFD147);
-    textSizeQ(waiting ? 22 * fk : 24 * fk);
-    boldTextF(waiting ? "Round-trip · waiting…" : "Start round-trip", FX(437) + 185 * fk, FY(466) + 35 * fk);
-  } else {
-    fill(20, 60, 54);
-    rrect(FX(246), FY(466), 360 * fk, 70 * fk, 20 * fk);
-    fill(#4DE2C4);
-    textSizeQ(26 * fk);
-    boldTextF("+  Mint a test proof", FX(246) + 180 * fk, FY(466) + 35 * fk);
-  }
+  // test proof (left)
+  fill(20, 60, 54);
+  rrect(FX(45), FY(466), 370 * fk, 70 * fk, 20 * fk);
+  fill(#4DE2C4);
+  textSizeQ(24 * fk);
+  boldTextF("+  Test proof", FX(45) + 185 * fk, FY(466) + 35 * fk);
+  // round-trip (right) — label reflects whether one is out and waiting
+  boolean waiting = rtPendingHash().length() > 0;
+  fill(waiting ? color(58, 46, 18) : color(44, 36, 16));
+  rrect(FX(437), FY(466), 370 * fk, 70 * fk, 20 * fk);
+  fill(#FFD147);
+  textSizeQ(waiting ? 22 * fk : 24 * fk);
+  boldTextF(waiting ? "Round-trip · waiting…" : "Start round-trip", FX(437) + 185 * fk, FY(466) + 35 * fk);
 
   // ---- the pile, newest first
   float top = FY(600), rowH = 108 * fk;
@@ -124,14 +116,10 @@ void eflexTap(float mx, float my) {
   poke();
   boolean onRow = my >= FY(466) && my <= FY(466) + 70 * fk;
   if (!onRow) return;
-  if (onIOS) {
-    if (mx >= FX(45) && mx <= FX(45) + 370 * fk) {                     // test proof (left)
-      mintProof("TEST", eflexBody("TEST"), 1.0);
-    } else if (mx >= FX(437) && mx <= FX(437) + 370 * fk) {            // start / re-send round-trip (right)
-      roundTripStart();
-    }
-  } else if (mx >= FX(246) && mx <= FX(246) + 360 * fk) {              // Android: test only
+  if (mx >= FX(45) && mx <= FX(45) + 370 * fk) {                       // test proof (left)
     mintProof("TEST", eflexBody("TEST"), 1.0);
+  } else if (mx >= FX(437) && mx <= FX(437) + 370 * fk) {              // start / re-send round-trip (right)
+    roundTripStart();
   }
 }
 
@@ -163,7 +151,7 @@ void roundTripStart() {
   }
 }
 void eflexPoll() {
-  if (!onIOS || js == null) return;
+  if (js == null) return;
   if (rtPendingHash().length() == 0) return;                          // nothing out — no bridge call at all
   if (frameCount < eflexPollAt) return;                               // throttle: a few checks a second, not 60
   eflexPollAt = frameCount + 20;
