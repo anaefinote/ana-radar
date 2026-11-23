@@ -4,17 +4,32 @@
 // (The "+ Mint a test proof" button is a dev stand-in that proves the pipeline; real lessons call
 //  mintProof() themselves once they verify an event.)
 
-// ---- vault store (persisted via pref: one record per line "lesson|timestamp|hash|amount")
+// ---- vault store (persisted via pref: one record per line "lesson|timestamp|hash|amount").
+// Cached in the sketch so drawing never hits the bridge every frame — on iOS every js.* call is a
+// synchronous window.prompt, and reading the vault 60x/second froze the slower phones. We read the
+// pref once (lazily) and keep the pile in memory; eflexAdd keeps the cache and the pref in step.
+String[] eflexCache = null;        // vault rows; null = not loaded from pref yet
+String rtPendCache = null;         // pending round-trip hash; null = not loaded, "" = none out
+int    eflexPollAt = 0;            // next frame we're allowed to poll roundTripInbox
+
 String[] eflexRows() {
-  String cur = (js != null) ? js.pref("eflexVault") : "";
-  if (cur == null || cur.length() == 0) return new String[0];
-  return split(cur, '\n');
+  if (eflexCache == null) {
+    String cur = (js != null) ? js.pref("eflexVault") : "";
+    eflexCache = (cur == null || cur.length() == 0) ? new String[0] : split(cur, '\n');
+  }
+  return eflexCache;
 }
 void eflexAdd(String rec) {
-  String cur = (js != null) ? js.pref("eflexVault") : "";
-  if (cur == null) cur = "";
-  String nv = cur.length() > 0 ? cur + "\n" + rec : rec;
-  if (js != null) js.setPref("eflexVault", nv);
+  String[] old = eflexRows();
+  String[] nv = new String[old.length + 1];
+  for (int i = 0; i < old.length; i++) nv[i] = old[i];
+  nv[old.length] = rec;
+  eflexCache = nv;
+  if (js != null) {
+    String s = "";
+    for (int i = 0; i < nv.length; i++) s += (i > 0 ? "\n" : "") + nv[i];
+    js.setPref("eflexVault", s);
+  }
 }
 float eflexTotal() {
   String[] r = eflexRows(); float t = 0;
@@ -129,10 +144,12 @@ String eflexBody(String lesson) {
 }
 
 // ---- ROUND-TRIP (L2): mint a fresh proof, share it out, remember its hash; mint for real when it returns.
-String rtPendingHash() {
-  if (js == null) return "";
-  String h = js.pref("rtPendingHash");
-  return (h == null) ? "" : h;
+String rtPendingHash() {                                              // cached: no per-frame bridge call
+  if (rtPendCache == null) {
+    String h = (js != null) ? js.pref("rtPendingHash") : "";
+    rtPendCache = (h == null) ? "" : h;
+  }
+  return rtPendCache;
 }
 void roundTripStart() {
   if (js == null) return;
@@ -141,14 +158,18 @@ void roundTripStart() {
   if (h != null && h.length() > 0) {
     js.setPref("rtPendingHash", h);
     js.setPref("rtPendingBody", body);
+    rtPendCache = h;
+    eflexPollAt = frameCount;                                         // start watching for the return now
   }
 }
 void eflexPoll() {
   if (!onIOS || js == null) return;
+  if (rtPendingHash().length() == 0) return;                          // nothing out — no bridge call at all
+  if (frameCount < eflexPollAt) return;                               // throttle: a few checks a second, not 60
+  eflexPollAt = frameCount + 20;
   String got = js.roundTripInbox();                                   // sha256 of any round-trip files imported back
   if (got == null || got.length() == 0) return;
   String pend = rtPendingHash();
-  if (pend.length() == 0) return;
   String[] hs = split(got, '\n');
   for (int i = 0; i < hs.length; i++) {
     if (hs[i].equals(pend)) {                                         // the exact bytes I sent came back — proof carried
@@ -156,6 +177,7 @@ void eflexPoll() {
       mintProof("ROUNDTRIP", (body != null && body.length() > 0) ? body : ("roundtrip\nhash: " + pend), 2.0);
       js.setPref("rtPendingHash", "");
       js.setPref("rtPendingBody", "");
+      rtPendCache = "";
     }
   }
 }
