@@ -294,6 +294,10 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             let s = coSignInbox.joined(separator: "\n@@@\n")
             coSignInbox.removeAll()
             return s
+        case "lanPeers":                              // PRESENCE MESH: ANAs reachable on this Wi-Fi ("tag~name;...")
+            ChatNet.shared.start()                    // announce this phone so others can find it
+            ChatNet.shared.startMesh()                // keep a live browse of the LAN
+            return ChatNet.shared.lanList()
         case "gstAsk":
             let id = arg(a, 0), t = arg(a, 1), m = arg(a, 2), s = arg(a, 3)
             later { self.gstAsk(id, t, m, s) }

@@ -85,6 +85,7 @@ interface JavaScript {
   String coSignRequest(String body);   // L1: share A's co-sign commitment (classCoSign), return its sha256
   void coSignReply(String body);       // L1: share the finished moment + both sigs (classCoSignReply)
   String coSignInbox();                // L1: "REQ\t<body>" / "REPLY\t<body>" of each co-sign file imported, @@@-separated
+  String lanPeers();                   // PRESENCE MESH: ANAs reachable on this Wi-Fi, "tag~name;tag~name;..." (reachable, not near)
   void gstAsk(String id, String title, String msg, String spec);     // GST: a dialog with fields ("label|default|number" lines)
   void gstPick(String id, String title, String items);               // GST: a list to pick from (one item per line)
   String flexKey();                    // FLEX: this phone's public signing key (base64)

@@ -253,6 +253,7 @@
         coSignRequest: function (b) { return window.__ANA_IOS && AndroidANA.coSignRequest ? String(AndroidANA.coSignRequest(String(b)) || '') : ''; },
         coSignReply: function (b) { if (window.__ANA_IOS && AndroidANA.coSignReply) AndroidANA.coSignReply(String(b)); },
         coSignInbox: function () { return window.__ANA_IOS && AndroidANA.coSignInbox ? String(AndroidANA.coSignInbox() || '') : ''; },
+        lanPeers: function () { return window.__ANA_IOS && AndroidANA.lanPeers ? String(AndroidANA.lanPeers() || '') : ''; },
         gstAsk:      function (id, t, m, s) { if (window.__ANA_IOS) AndroidANA.gstAsk(String(id), String(t), String(m), String(s)); },
         gstPick:     function (id, t, items) { if (window.__ANA_IOS) AndroidANA.gstPick(String(id), String(t), String(items)); },
         gstAnswer:   function (id) { return window.__ANA_IOS ? String(AndroidANA.gstAnswer(String(id)) || '') : ''; },

@@ -85,6 +85,35 @@ final class ChatNet {
         }
     }
 
+    // ------------------------------------------------------------------ MESH presence: a live list of ANAs on this
+    // Wi-Fi, kept current by a standing browser. The radar shows these as "reachable" dots (not "near" — no RSSI).
+    private var meshBrowser: NWBrowser?
+    private var lanCache: [String] = []        // "tag~name" per discovered ANA (never this phone)
+
+    func startMesh() {
+        if meshBrowser != nil { return }
+        let b = NWBrowser(for: .bonjour(type: "_anachat._tcp", domain: nil), using: .tcp)
+        let me = tag
+        b.browseResultsChangedHandler = { [weak self] results, _ in
+            var out = [String]()
+            for r in results {
+                if case let .service(name, _, _, _) = r.endpoint {
+                    if name.hasPrefix(me + " ") { continue }           // skip this phone's own announcement
+                    let parts = name.split(separator: " ", maxSplits: 1)
+                    let t = String(parts.first ?? "")
+                    let n = parts.count > 1 ? String(parts[1]) : name
+                    if !t.isEmpty { out.append(t + "~" + n) }
+                }
+            }
+            self?.lanCache = out
+        }
+        b.stateUpdateHandler = { [weak self] s in if case .failed = s { self?.meshBrowser?.cancel(); self?.meshBrowser = nil } }
+        b.start(queue: q)
+        meshBrowser = b
+    }
+    func stopMesh() { meshBrowser?.cancel(); meshBrowser = nil; lanCache = [] }
+    func lanList() -> String { lanCache.joined(separator: ";") }
+
     // ------------------------------------------------------------------ sending
     /// done(nil) when the other ANA took it, else why not (on the main queue)
     func send(_ f: Data, to e: NWEndpoint, _ done: @escaping (String?) -> Void) {

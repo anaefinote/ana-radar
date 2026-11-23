@@ -91,6 +91,7 @@ void drawRadar() {
   else if (fenced)  text(fMembers + (fMembers == 1 ? " in fence" : " in the fence"), cx, cy + 56 * fk);
   else              text(n == 1 ? "ANA device near" : "ANA devices near", cx, cy + 56 * fk);
 
+  drawReachable(cx, cy, R);                         // PRESENCE MESH: ANAs reachable over Wi-Fi (ghosted outer arc)
   // ---- ANA FENCE controls, between the scope and the list
   drawFenceStrip(fenced, fRole, fName, fHue, fMembers);
   coSignPoll();                                     // catch an incoming co-sign request/reply
@@ -238,6 +239,40 @@ void drawFenceStrip(boolean fenced, int fRole, String fName, int fHue, int fMemb
     }
   }
   noStroke();
+}
+
+// ---- PRESENCE MESH (slice 1): ANAs reachable over Wi-Fi, shown as ghosted dots on an OUTER arc above
+// the scope. They are "reachable", not "near" — no RSSI, no distance claim. Discovery is Bonjour/NSD
+// (the same the CHATNOTE listener announces). v1: show only; no dedupe-with-Bluetooth yet.
+String lanCache = "";
+int lanAt = 0;
+void drawReachable(float cx, float cy, float R) {
+  if (js == null) return;
+  if (frameCount >= lanAt) { lanAt = frameCount + 20; lanCache = js.lanPeers(); }   // ~3x/sec
+  if (lanCache == null || lanCache.length() == 0) return;
+  String[] ps = split(lanCache, ';');
+  int n = ps.length;
+  float rr = R * 1.16;
+  textAlign(CENTER, CENTER);
+  for (int i = 0; i < n; i++) {
+    String[] tn = split(ps[i], '~');
+    String nm = (tn.length > 1 && tn[1].length() > 0) ? tn[1] : ps[i];
+    float a = (n == 1) ? -HALF_PI : map(i, 0, n - 1, PI + 0.55, TWO_PI - 0.55);
+    float x = cx + cos(a) * rr, y = cy + sin(a) * rr;
+    noFill();
+    stroke(127, 176, 255, 150);
+    strokeWeight(2 * fk);
+    ellipse(x, y, 26 * fk, 26 * fk);
+    noStroke();
+    fill(127, 176, 255, 55);
+    ellipse(x, y, 26 * fk, 26 * fk);
+    fill(127, 176, 255, 220);
+    textSizeQ(16 * fk);
+    text(nm, x, y - 26 * fk);
+  }
+  fill(127, 176, 255, 170);
+  textSizeQ(15 * fk);
+  text("· reachable on Wi-Fi ·", cx, cy - rr - 36 * fk);
 }
 
 // Seal the fence: write a signed record of who was inside, over the window, as a pngmesh + sha256.
