@@ -254,6 +254,8 @@
         coSignReply: function (b) { if (window.__ANA_IOS && AndroidANA.coSignReply) AndroidANA.coSignReply(String(b)); },
         coSignInbox: function () { return window.__ANA_IOS && AndroidANA.coSignInbox ? String(AndroidANA.coSignInbox() || '') : ''; },
         lanPeers: function () { return window.__ANA_IOS && AndroidANA.lanPeers ? String(AndroidANA.lanPeers() || '') : ''; },
+        tailAdd: function () { if (window.__ANA_IOS && AndroidANA.tailAdd) AndroidANA.tailAdd(); },
+        tailPeers: function () { return window.__ANA_IOS && AndroidANA.tailPeers ? String(AndroidANA.tailPeers() || '') : ''; },
         gstAsk:      function (id, t, m, s) { if (window.__ANA_IOS) AndroidANA.gstAsk(String(id), String(t), String(m), String(s)); },
         gstPick:     function (id, t, items) { if (window.__ANA_IOS) AndroidANA.gstPick(String(id), String(t), String(items)); },
         gstAnswer:   function (id) { return window.__ANA_IOS ? String(AndroidANA.gstAnswer(String(id)) || '') : ''; },

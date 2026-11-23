@@ -298,6 +298,13 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             ChatNet.shared.start()                    // announce this phone so others can find it
             ChatNet.shared.startMesh()                // keep a live browse of the LAN
             return ChatNet.shared.lanList()
+        case "tailAdd":                               // PRESENCE MESH: add a tailnet peer by address (manual directory)
+            later { self.tailAdd() }
+            return true
+        case "tailPeers":                             // PRESENCE MESH: known tailnet peers + live flag ("addr~name~1/0;...")
+            ChatNet.shared.start()                    // be reachable too
+            tailRefresh()                             // (re)check who answers
+            return tailList()
         case "gstAsk":
             let id = arg(a, 0), t = arg(a, 1), m = arg(a, 2), s = arg(a, 3)
             later { self.gstAsk(id, t, m, s) }
@@ -372,6 +379,52 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         }
         delivered = lines.count
         web.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // ================================================================================================ PRESENCE MESH: tailnet peers
+    // The tailnet is the directory (settled: no WAN auto-discovery) — you add a peer by its Tailscale
+    // address once, ANA pings it to light it up on the radar as "reachable via Tailscale" (never "near").
+    private func tailAdd() {
+        let ac = UIAlertController(title: "Add a Tailscale peer",
+            message: "With Tailscale running on both phones, enter the other phone's 100.x.y.z address (or its MagicDNS name) and a name to show.",
+            preferredStyle: .alert)
+        ac.addTextField { t in t.placeholder = "100.x.y.z"; t.keyboardType = .URL; t.autocapitalizationType = .none; t.autocorrectionType = .no }
+        ac.addTextField { t in t.placeholder = "Name"; t.autocapitalizationType = .words }
+        ac.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        ac.addAction(UIAlertAction(title: "Add", style: .default) { [weak self, weak ac] _ in
+            guard let self = self else { return }
+            let addr = (ac?.textFields?[0].text ?? "").trimmingCharacters(in: .whitespaces)
+            var name = (ac?.textFields?[1].text ?? "").trimmingCharacters(in: .whitespaces)
+            if addr.isEmpty { return }
+            for ch in ["~", ";", "\t", "\n"] { name = name.replacingOccurrences(of: ch, with: " ") }
+            if name.isEmpty { name = addr }
+            let cur = self.defaults.string(forKey: "tailPeers") ?? ""
+            var lines = cur.split(separator: "\n").map(String.init).filter { !$0.hasPrefix(addr + "\t") }
+            lines.append(addr + "\t" + name)
+            self.defaults.set(lines.joined(separator: "\n"), forKey: "tailPeers")
+        })
+        sheet(ac)
+    }
+    private func tailRefresh() {
+        let cur = defaults.string(forKey: "tailPeers") ?? ""
+        for line in cur.split(separator: "\n") {
+            let addr = String(line.split(separator: "\t").first ?? "")
+            if addr.isEmpty { continue }
+            ChatNet.shared.ping(host: addr) { [weak self] ok in
+                if ok { self?.tailLive.insert(addr) } else { self?.tailLive.remove(addr) }
+            }
+        }
+    }
+    private func tailList() -> String {
+        let cur = defaults.string(forKey: "tailPeers") ?? ""
+        var out = [String]()
+        for line in cur.split(separator: "\n") {
+            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            guard let addr = parts.first, !addr.isEmpty else { continue }
+            let name = parts.count > 1 ? parts[1] : addr
+            out.append(addr + "~" + name + "~" + (tailLive.contains(addr) ? "1" : "0"))
+        }
+        return out.joined(separator: ";")
     }
 
     // ================================================================================================ manual entry, reminder
@@ -867,6 +920,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     private var gstInbox = [String]()                 // received pack rows, tab-separated, for the sketch
     private var rtInbox = [String]()                  // ROUND-TRIP: sha256 of each round-trip .pngmesh imported back
     private var coSignInbox = [String]()              // CO-SIGN: "REQ\t<body>" / "REPLY\t<body>" of each imported co-sign file
+    private var tailLive = Set<String>()              // PRESENCE MESH: tailnet addresses that answered a reachability ping
     private var gstAnswers = [String: String]()       // dialog id -> "O\tvalues..." or "C"
 
     /// received packs: to the sketch; spend alerts also land on Pulse

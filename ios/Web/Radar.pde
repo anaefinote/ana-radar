@@ -92,6 +92,7 @@ void drawRadar() {
   else              text(n == 1 ? "ANA device near" : "ANA devices near", cx, cy + 56 * fk);
 
   drawReachable(cx, cy, R);                         // PRESENCE MESH: ANAs reachable over Wi-Fi (ghosted outer arc)
+  drawTailnet(cx, cy, R);                            // PRESENCE MESH: tailnet peers reachable over Tailscale (violet list)
   // ---- ANA FENCE controls, between the scope and the list
   drawFenceStrip(fenced, fRole, fName, fHue, fMembers);
   coSignPoll();                                     // catch an incoming co-sign request/reply
@@ -275,6 +276,42 @@ void drawReachable(float cx, float cy, float R) {
   text("· reachable on Wi-Fi ·", cx, cy - rr - 36 * fk);
 }
 
+// ---- PRESENCE MESH (slice 2): tailnet (Tailscale) peers — the longest carry layer. The tailnet is the
+// directory (added by address, no WAN auto-discovery), so these are a small list off the scope, violet,
+// live/stale by a reachability ping. Reachable via Tailscale — never "near". A "+" adds one by address.
+String tailCache = "";
+int tailAt = 0;
+float tailAddX, tailAddY, tailAddW, tailAddH;      // the "+ Tailscale peer" chip rect, for the tap test
+void drawTailnet(float cx, float cy, float R) {
+  if (js == null) return;
+  if (frameCount >= tailAt) { tailAt = frameCount + 25; tailCache = js.tailPeers(); }
+  tailAddX = FX(45); tailAddY = FY(150); tailAddW = 250 * fk; tailAddH = 52 * fk;
+  fill(20, 24, 40, 230);
+  rrect(tailAddX, tailAddY, tailAddW, tailAddH, 14 * fk);
+  fill(#B9A7FF);
+  textAlign(CENTER, CENTER);
+  textSizeQ(19 * fk);
+  text("+ Tailscale peer", tailAddX + tailAddW / 2, tailAddY + tailAddH / 2);
+  if (tailCache == null || tailCache.length() == 0) return;
+  String[] ps = split(tailCache, ';');
+  for (int i = 0; i < ps.length; i++) {
+    String[] f = split(ps[i], '~');
+    String nm = (f.length > 1 && f[1].length() > 0) ? f[1] : ps[i];
+    boolean live = f.length > 2 && f[2].equals("1");
+    float y = tailAddY + 64 * fk + i * 46 * fk;
+    fill(live ? color(90, 200, 150) : color(90, 90, 104));
+    ellipse(FX(60), y, 15 * fk, 15 * fk);
+    fill(live ? color(185, 167, 255, 235) : color(150, 150, 170, 170));
+    textAlign(LEFT, CENTER);
+    textSizeQ(18 * fk);
+    text(nm + (live ? "" : "  (offline)"), FX(80), y);
+  }
+  fill(185, 167, 255, 150);
+  textAlign(LEFT, CENTER);
+  textSizeQ(14 * fk);
+  text("via Tailscale", FX(50), tailAddY + 64 * fk + ps.length * 46 * fk + 6 * fk);
+}
+
 // Seal the fence: write a signed record of who was inside, over the window, as a pngmesh + sha256.
 // The signed roster IS the seal (v0.3) — host signs it with its FLEX key; anyone can verify later.
 void fenceSeal() {
@@ -312,6 +349,11 @@ void fenceSeal() {
 
 void radarTap(float mx, float my) {
   poke();
+  // "+ Tailscale peer" chip (presence mesh): add a tailnet peer by address
+  if (js != null && mx >= tailAddX && mx <= tailAddX + tailAddW && my >= tailAddY && my <= tailAddY + tailAddH) {
+    js.tailAdd();
+    return;
+  }
   String fInfo = (js != null) ? js.fenceInfo() : "";
   boolean fenced = fInfo.length() > 0;
   int fRole = 0; String myFid = "-";

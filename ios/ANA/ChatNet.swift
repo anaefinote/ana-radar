@@ -150,4 +150,22 @@ final class ChatNet {
         guard let p = NWEndpoint.Port(rawValue: ChatNet.port) else { done("bad port"); return }
         send(f, to: .hostPort(host: NWEndpoint.Host(host), port: p), done)
     }
+
+    /// MESH reachability: does an ANA answer at host:47474? A TCP .ready = something is listening there.
+    /// Used to light up a tailnet (Tailscale) peer on the radar as "reachable", never "near".
+    func ping(host: String, _ done: @escaping (Bool) -> Void) {
+        guard let p = NWEndpoint.Port(rawValue: ChatNet.port) else { done(false); return }
+        let c = NWConnection(to: .hostPort(host: NWEndpoint.Host(host), port: p), using: .tcp)
+        var fin = false
+        func f(_ ok: Bool) { q.async { if fin { return }; fin = true; c.cancel(); DispatchQueue.main.async { done(ok) } } }
+        c.stateUpdateHandler = { s in
+            switch s {
+            case .ready: f(true)
+            case .failed: f(false)
+            default: break               // .waiting is transient; let the 4s timeout decide
+            }
+        }
+        c.start(queue: q)
+        q.asyncAfter(deadline: .now() + 4) { f(false) }
+    }
 }
