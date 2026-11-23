@@ -254,7 +254,9 @@ void fenceSeal() {
   String[] fi = split(fInfo, '\t');
   if (fi.length < 2) { sealDbg = "fence info thin (" + fi.length + ")"; return; }
   String fid = fi[0], name = fi[1];
+  sealDbg = "2 fence ok";
   String data = js.radarPeers();
+  sealDbg = "3 peers " + data.length();
   String ps = rdrField(data, 1);
   String[] rows = ps.length() == 0 ? new String[0] : split(ps, ';');
 
@@ -263,7 +265,9 @@ void fenceSeal() {
   b.append("fence: ").append(fid).append("  ").append(name).append("\n");
   b.append("sealed: ").append(nf(year(), 4)).append("-").append(nf(month(), 2)).append("-").append(nf(day(), 2))
    .append(" ").append(nf(hour(), 2)).append(":").append(nf(minute(), 2)).append("\n");
+  sealDbg = "4 pre-key";
   b.append("host_key: ").append(js.flexKey()).append("\n");
+  sealDbg = "5 got key";
   b.append("member: host  ").append(gMyName).append("\n");
   for (int i = 0; i < rows.length; i++) {
     String[] f = split(rows[i], ',');
@@ -273,8 +277,11 @@ void fenceSeal() {
       b.append("member: ").append(f[0]).append("  ").append(nm).append("\n");
     }
   }
+  sealDbg = "6 pre-sign";
   String sig = js.flexSign(b.toString());          // host signs the whole roster
+  sealDbg = "7 got sig " + sig.length();
   b.append("sig: ").append(sig).append("\n");
+  sealDbg = "8 pre-hash";
   b.append("sha256: ").append(js.flexHash(b.toString())).append("\n");
   sealDbg = "calling sealExport (" + b.length() + "b)";
   js.sealExport(b.toString());                     // seal the payload itself -> .pngmesh + .sha256, shareable
