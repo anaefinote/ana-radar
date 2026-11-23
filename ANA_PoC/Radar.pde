@@ -285,7 +285,7 @@ float tailAddX, tailAddY, tailAddW, tailAddH;      // the "+ Tailscale peer" chi
 void drawTailnet(float cx, float cy, float R) {
   if (js == null) return;
   if (frameCount >= tailAt) { tailAt = frameCount + 25; tailCache = js.tailPeers(); }
-  tailAddX = FX(45); tailAddY = FY(150); tailAddW = 250 * fk; tailAddH = 52 * fk;
+  tailAddX = FX(557); tailAddY = FY(150); tailAddW = 250 * fk; tailAddH = 52 * fk;   // top-right, flush to the content margin — off the ANA header text
   fill(20, 24, 40, 230);
   rrect(tailAddX, tailAddY, tailAddW, tailAddH, 14 * fk);
   fill(#B9A7FF);
