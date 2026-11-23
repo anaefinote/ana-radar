@@ -567,6 +567,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     /// sheet so the human can carry it out through WhatsApp. Returns the file's sha256 — the sketch
     /// remembers it and mints eFlex when the exact same hash comes back in via IMPORT.
     private func roundTripShare(_ body: String) -> String {
+        toast("Preparing round-trip\u{2026}")      // breadcrumb: confirms the tap reached native
         let mesh = AnaMesh.writeRoundTrip(body)
         let hash = AnaMesh.sha256(mesh)
         let fmt = DateFormatter()
@@ -631,7 +632,9 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
             pop.permittedArrowDirections = []
         }
-        present(vc, animated: true)
+        var top: UIViewController = self                        // present from the top-most controller,
+        while let p = top.presentedViewController, !p.isBeingDismissed { top = p }   // else present silently no-ops
+        top.present(vc, animated: true)
     }
 
     // ================================================================================================ IMPORT
