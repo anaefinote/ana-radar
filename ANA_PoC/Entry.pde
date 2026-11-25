@@ -9,6 +9,7 @@ class Entry {
   boolean dup = false;
   boolean selected = false;
   int logLine = -1;          // line in ana_log.txt (Android), -1 on the desktop
+  String trust = null;       // ANA #2 1b: "" none, "pinned\t<tag>" your companion, "unknown\t<tag>" verified-but-unrecognized; fetched once, cached
 
   // when = "yyyy-mm-dd hh:mm:ss" (just "hh:mm:ss" from older callers: then it's today)
   Entry(String src, String when, String pkg, String title, String body, String key, String lag) {

@@ -88,6 +88,7 @@ interface JavaScript {
   String lanPeers();                   // PRESENCE MESH: ANAs reachable on this Wi-Fi, "tag~name;tag~name;..." (reachable, not near)
   void tailAdd();                      // PRESENCE MESH: pop the "add a Tailscale peer by address" dialog
   String tailPeers();                  // PRESENCE MESH: known tailnet peers + live flag, "addr~name~1/0;..." (reachable via Tailscale)
+  String entryTrust(String key);       // ANA #2 1b: an entry's trust by its key: "" none, "pinned\t<tag>", "unknown\t<tag>"
   void gstAsk(String id, String title, String msg, String spec);     // GST: a dialog with fields ("label|default|number" lines)
   void gstPick(String id, String title, String items);               // GST: a list to pick from (one item per line)
   String flexKey();                    // FLEX: this phone's public signing key (base64)

@@ -14,7 +14,7 @@ window.__ANA_IOS = true;
     'fenceCreate', 'fenceJoin', 'fenceRequest', 'fenceAccept', 'fenceDecline', 'fenceLeave', 'fenceInfo', 'fenceKnockers', 'fenceOffers',
     'walletTotals', 'gstSend', 'gstInbox', 'gstAsk', 'gstPick', 'gstAnswer',
     'roundTripShare', 'roundTripInbox', 'sealExport',
-    'coSignRequest', 'coSignReply', 'coSignInbox', 'lanPeers', 'tailAdd', 'tailPeers',
+    'coSignRequest', 'coSignReply', 'coSignInbox', 'lanPeers', 'tailAdd', 'tailPeers', 'entryTrust',
     'flexKey', 'flexSign', 'flexVerify', 'flexHash'];
   var A = {};
   names.forEach(function (n) {

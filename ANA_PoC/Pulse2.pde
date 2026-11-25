@@ -281,8 +281,35 @@ void drawPulse2(boolean partial) {
       text(ago(secondsAgo(e)) + " ago", FX(757), y + 46 * fk);
       fill(#2F8BFF);
       ellipse(FX(780), y + 38 * fk, 12 * fk, 12 * fk);
+      // ANA #2 1b: a verified entry wears a small check + companion tag. Fetched once, cached on the entry.
+      if (e.trust == null && js != null) e.trust = js.entryTrust(e.nkey);
+      if (e.trust != null && e.trust.length() > 0) drawVerifyBadge(e.trust, FX(757), y + 70 * fk);
     }
   }
+}
+
+// ANA #2 1b: a small verify badge on a Recent card. trust = "pinned\t<tag>" (your companion, green) or
+// "unknown\t<tag>" (verified signature, unrecognized signer, amber). Drawn as a hand-stroked check + short id,
+// so it needs no glyph in the font. Right-anchored at xRight.
+void drawVerifyBadge(String trust, float xRight, float y) {
+  String[] p = split(trust, '\t');
+  if (p.length < 1) return;
+  boolean pinned = p[0].equals("pinned");
+  String tag = p.length > 1 ? p[1] : "";
+  if (tag.startsWith("companion ")) tag = tag.substring(10);
+  color c = pinned ? #3DDC97 : #F5B942;
+  textAlign(RIGHT, BASELINE);
+  textSizeQ(19 * fk);
+  fill(c);
+  text(tag, xRight, y);
+  float tw = textWidthAt(tag, 19 * fk);
+  float cx = xRight - tw - 24 * fk, cy = y - 6 * fk;     // the check, just left of the id
+  stroke(c);
+  strokeWeight(2.6 * fk);
+  noFill();
+  line(cx, cy, cx + 5 * fk, cy + 6 * fk);
+  line(cx + 5 * fk, cy + 6 * fk, cx + 15 * fk, cy - 7 * fk);
+  noStroke();
 }
 
 // the orbit round the bell ball: back half before the ball, front half after

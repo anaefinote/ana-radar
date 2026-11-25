@@ -306,6 +306,8 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             ChatNet.shared.start()                    // be reachable too
             tailRefresh()                             // (re)check who answers
             return tailList()
+        case "entryTrust":                            // ANA #2 1b: an entry's trust by key, for the Pulse badge
+            return trustFor(arg(a, 0))
         case "gstAsk":
             let id = arg(a, 0), t = arg(a, 1), m = arg(a, 2), s = arg(a, 3)
             later { self.gstAsk(id, t, m, s) }
@@ -918,20 +920,27 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             var pins = pinnedCompanions
             var vPinned = 0, vUnknown = 0, newlyPinned = false
             var pinnedTag = "", unknownTag = ""
+            var trustUpdates = [String: String]()            // entry key -> trust, for the per-entry badge (slice 2)
             for row in signed {
                 let sig = row.count > 9 ? row[9] : "", sgn = row.count > 10 ? row[10] : ""
+                let ekey = row.count > 6 ? row[6] : ""
                 if sig.isEmpty || sgn.isEmpty { continue }
                 if !AnaMesh.verifyEntry(sgn, AnaMesh.canonicalEntry(row), sig) { continue }
+                let tag = AnaMesh.signerTag(sgn)
                 if pins.contains(sgn) {
-                    vPinned += 1; if pinnedTag.isEmpty { pinnedTag = AnaMesh.signerTag(sgn) }
+                    vPinned += 1; if pinnedTag.isEmpty { pinnedTag = tag }
+                    if !ekey.isEmpty { trustUpdates[ekey] = "pinned\t" + tag }
                 } else if pins.isEmpty {
                     pins.insert(sgn); newlyPinned = true
-                    vPinned += 1; if pinnedTag.isEmpty { pinnedTag = AnaMesh.signerTag(sgn) }
+                    vPinned += 1; if pinnedTag.isEmpty { pinnedTag = tag }
+                    if !ekey.isEmpty { trustUpdates[ekey] = "pinned\t" + tag }
                 } else {
-                    vUnknown += 1; if unknownTag.isEmpty { unknownTag = AnaMesh.signerTag(sgn) }
+                    vUnknown += 1; if unknownTag.isEmpty { unknownTag = tag }
+                    if !ekey.isEmpty { trustUpdates[ekey] = "unknown\t" + tag }
                 }
             }
             if newlyPinned { pinnedCompanions = pins }       // persist the first-pinned companion
+            recordTrust(trustUpdates)                        // persist per-entry trust for the badge
             let r = addToLog(signed.map { Array($0.prefix(9)) })
             var parts = [String]()
             if vPinned > 0 { parts.append("\(vPinned) verified \u{00b7} " + (newlyPinned ? "new \(pinnedTag) (pinned as yours)" : "your \(pinnedTag)")) }
@@ -967,6 +976,17 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     private var pinnedCompanions: Set<String> {
         get { Set((UserDefaults.standard.array(forKey: "ana_pinned_companions") as? [String]) ?? []) }
         set { UserDefaults.standard.set(Array(newValue), forKey: "ana_pinned_companions") }
+    }
+    // ANA #2 1b (slice 2): per-entry trust, keyed by the entry's key, for the Pulse badge.
+    private func recordTrust(_ updates: [String: String]) {
+        guard !updates.isEmpty else { return }
+        var m = (UserDefaults.standard.dictionary(forKey: "ana_entry_trust") as? [String: String]) ?? [:]
+        for (k, v) in updates { m[k] = v }
+        if m.count > 4000 { m = [:] ; for (k, v) in updates { m[k] = v } }   // simple cap; prune properly later
+        UserDefaults.standard.set(m, forKey: "ana_entry_trust")
+    }
+    private func trustFor(_ key: String) -> String {
+        ((UserDefaults.standard.dictionary(forKey: "ana_entry_trust") as? [String: String]) ?? [:])[key] ?? ""
     }
     private var gstAnswers = [String: String]()       // dialog id -> "O\tvalues..." or "C"
 
