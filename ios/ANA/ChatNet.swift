@@ -15,6 +15,12 @@ final class ChatNet {
 
     private var tag: String { String(Chat.shared.myKeyId().prefix(8)) }
 
+    /// FILE PUSH (hybrid): a desktop/peer can push a whole .pngmesh here, framed, no 8 KB chat cap. Set by the app;
+    /// returns nil if ANA took the file, else why not. The chat line path is untouched — this is a separate branch.
+    var onFile: ((Data) -> String?)?
+    static let fileMarker = "ANAFILE1"
+    private static let maxFile = 8 * 1024 * 1024    // 8 MB ceiling, so a push can't run the phone out of memory
+
     // ------------------------------------------------------------------ listening
     func start() {
         if let l = listener, l.state != .cancelled, !isFailed(l.state) { return }
@@ -32,7 +38,12 @@ final class ChatNet {
 
     private func take(_ c: NWConnection) {
         c.start(queue: q)
-        readLine(c, Data()) { line in
+        readHead(c, Data()) { line, rest in
+            // FILE PUSH branch: a framed .pngmesh, not a chat line. A real chat message is base64 of a signed
+            // BillCore file and never equals this marker, so the chat path below is left exactly as it was.
+            if let l = line, l.trimmingCharacters(in: .whitespacesAndNewlines) == ChatNet.fileMarker {
+                self.takeFile(c, rest); return
+            }
             var reply = "NO unreadable"
             if let l = line, l.count < 8000, let f = Data(base64Encoded: l.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 var route = "Wi-Fi"
@@ -57,6 +68,63 @@ final class ChatNet {
             if let nl = all.firstIndex(of: 10) { done(String(data: all[all.startIndex..<nl], encoding: .utf8)); return }
             if end || err != nil || all.count > 9000 { done(all.isEmpty ? nil : String(data: all, encoding: .utf8)); return }
             self?.readLine(c, all, done)
+        }
+    }
+
+    /// Like readLine, but also returns the bytes already read PAST the newline — the framed file push needs them,
+    /// because its length prefix can ride in the same TCP segment as the marker line.
+    private func readHead(_ c: NWConnection, _ got: Data, _ done: @escaping (String?, Data) -> Void) {
+        c.receive(minimumIncompleteLength: 1, maximumLength: 9000) { [weak self] d, _, end, err in
+            var all = got
+            if let d = d { all.append(d) }
+            if let nl = all.firstIndex(of: 10) {
+                let line = String(data: all[all.startIndex..<nl], encoding: .utf8)
+                done(line, Data(all[all.index(after: nl)...]))
+                return
+            }
+            if end || err != nil || all.count > 9000 { done(all.isEmpty ? nil : String(data: all, encoding: .utf8), Data()); return }
+            self?.readHead(c, all, done)
+        }
+    }
+
+    // ------------------------------------------------------------------ receiving a framed file push
+    /// After the "ANAFILE1" marker: 8 bytes big-endian length, then that many bytes = a whole .pngmesh.
+    private func takeFile(_ c: NWConnection, _ pre: Data) {
+        readN(c, 8, pre) { head in
+            guard let head = head, head.count == 8 else {
+                c.send(content: Data("NO bad header\n".utf8), completion: .contentProcessed { _ in c.cancel() }); return
+            }
+            var n = 0
+            for i in 0..<8 { n = (n << 8) | Int(head[head.startIndex + i]) }       // big-endian int64 (fits Int)
+            if n <= 0 || n > ChatNet.maxFile {
+                c.send(content: Data("NO bad size\n".utf8), completion: .contentProcessed { _ in c.cancel() }); return
+            }
+            self.readN(c, n, Data()) { body in
+                var reply = "NO truncated"
+                if let body = body, body.count == n {
+                    let g = DispatchGroup()
+                    g.enter()
+                    DispatchQueue.main.async {
+                        let why: String? = self.onFile != nil ? self.onFile!(body) : "no file handler"
+                        reply = (why == nil) ? "OK" : "NO " + why!
+                        g.leave()
+                    }
+                    g.wait()
+                }
+                c.send(content: Data((reply + "\n").utf8), completion: .contentProcessed { _ in c.cancel() })
+            }
+        }
+    }
+
+    /// Read exactly `need` bytes (starting from whatever `got` already holds), or nil if the stream ends first.
+    private func readN(_ c: NWConnection, _ need: Int, _ got: Data, _ done: @escaping (Data?) -> Void) {
+        if got.count >= need { done(got.prefix(need)); return }
+        c.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] d, _, end, err in
+            var all = got
+            if let d = d { all.append(d) }
+            if all.count >= need { done(all.prefix(need)); return }
+            if end || err != nil { done(nil); return }
+            self?.readN(c, need, all, done)
         }
     }
 

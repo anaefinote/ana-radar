@@ -33,6 +33,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
 
         }
         Chat.shared.onNew = { [weak self] m in self?.chatArrived(m) }           // CHATNOTE: a message arrived
+        ChatNet.shared.onFile = { [weak self] f in self?.ingestPushedMesh(f) }  // MESH FILE PUSH: a whole pngmesh over Wi-Fi/Tailscale (e.g. GAXT notifications)
         AndroidLink.shared.onBillOk = { [weak self] f in                         // BILLS: the Android confirmed a payment
             if let m = Bills.shared.paid(f, viaLink: true) { self?.toast(m) }
             self?.deliverPending()
@@ -835,51 +836,9 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         for (h, m) in waitingMesh where waitingSidecar.contains(h) {
             waitingMesh[h] = nil
             waitingSidecar.remove(h)
-            if AnaMesh.classOf(m.1) == AnaMesh.classRoundTrip {   // ROUND-TRIP: a proof the human carried out and back
-                rtInbox.append(h)                         // hand its sha256 to the sketch; it mints if it matches what it sent
-                notes.append("Round-trip proof received \u{2713}")
-                continue
-            }
-            if AnaMesh.classOf(m.1) == AnaMesh.classCoSign {       // CO-SIGN hop 1: a signed commitment from A
-                let b = AnaMesh.readCoSign(m.1)
-                if !b.isEmpty { coSignInbox.append("REQ\t" + b) }
-                notes.append("Co-sign request received")
-                continue
-            }
-            if AnaMesh.classOf(m.1) == AnaMesh.classCoSignReply {  // CO-SIGN hop 2: the full moment + both sigs
-                let b = AnaMesh.readCoSignReply(m.1)
-                if !b.isEmpty { coSignInbox.append("REPLY\t" + b) }
-                notes.append("Co-sign reply received")
-                continue
-            }
-            let bc = BillCore.classOf(m.1)                // BILLS: a shared bill (40), a help receipt (41), a thank-you (42)
-            if bc == BillCore.clsChat {                   // CHATNOTE: a message that came as a file
-                let f = m.1
-                DispatchQueue.main.async { if let why = Chat.shared.receive(f, route: "File") { self.toast(why) } }
-                continue
-            }
-            if bc >= BillCore.clsBill && bc <= BillCore.clsJourney {
-                let f = m.1
-                DispatchQueue.main.async { self.billReceived(f) }
-                continue
-            }
-            let lc = Lessons.classOf(m.1)                 // LESSONS: a lesson (30) or a root-chain file (31, 32)
-            if lc == AnaRule.classLesson || lc == AnaRule.classPermit || lc == AnaRule.classRevoke {
-                let f = m.1, sc = Data((h + "\n").utf8)
-                DispatchQueue.main.async { self.showLessonImport(f, sc) }
-                continue
-            }
-            do {
-                if AnaMesh.classOf(m.1) == AnaMesh.classGst {
-                    gst += gstReceived(try AnaMesh.readGst(m.1))
-                    continue
-                }
-                let r = addToLog(try AnaMesh.read(m.1))
-                added += r.0
-                skipped += r.1
-            } catch {
-                notes.append("\(m.0): \(error.localizedDescription)")
-            }
+            let r = ingestOneMesh(m.1, h, name: m.0)
+            added += r.added; skipped += r.skipped; gst += r.gst
+            if let n = r.note { notes.append(n) }
         }
         for (_, m) in waitingMesh { notes.append("\(m.0): waiting for its .sha256 (IMPORT it too)") }
         if !waitingSidecar.isEmpty && waitingMesh.isEmpty && added == 0 && skipped == 0 && gst == 0 {
@@ -912,6 +871,63 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             added += 1
         }
         return (added, skipped)
+    }
+
+    /// Route ONE imported/pushed .pngmesh by its class — the single place that decides what each class does, so
+    /// the file importer (two-file pairing) and the mesh file push (framed, one payload) stay in step.
+    private func ingestOneMesh(_ f: Data, _ h: String, name: String) -> (added: Int, skipped: Int, gst: Int, note: String?) {
+        if AnaMesh.classOf(f) == AnaMesh.classRoundTrip {     // ROUND-TRIP: a proof the human carried out and back
+            rtInbox.append(h)                                 // hand its sha256 to the sketch; it mints if it matches what it sent
+            return (0, 0, 0, "Round-trip proof received \u{2713}")
+        }
+        if AnaMesh.classOf(f) == AnaMesh.classCoSign {        // CO-SIGN hop 1: a signed commitment from A
+            let b = AnaMesh.readCoSign(f)
+            if !b.isEmpty { coSignInbox.append("REQ\t" + b) }
+            return (0, 0, 0, "Co-sign request received")
+        }
+        if AnaMesh.classOf(f) == AnaMesh.classCoSignReply {   // CO-SIGN hop 2: the full moment + both sigs
+            let b = AnaMesh.readCoSignReply(f)
+            if !b.isEmpty { coSignInbox.append("REPLY\t" + b) }
+            return (0, 0, 0, "Co-sign reply received")
+        }
+        let bc = BillCore.classOf(f)                          // BILLS / CHATNOTE carried as a file
+        if bc == BillCore.clsChat {
+            DispatchQueue.main.async { if let why = Chat.shared.receive(f, route: "File") { self.toast(why) } }
+            return (0, 0, 0, nil)
+        }
+        if bc >= BillCore.clsBill && bc <= BillCore.clsJourney {
+            DispatchQueue.main.async { self.billReceived(f) }
+            return (0, 0, 0, nil)
+        }
+        let lc = Lessons.classOf(f)                           // LESSONS: a lesson (30) or a root-chain file (31, 32)
+        if lc == AnaRule.classLesson || lc == AnaRule.classPermit || lc == AnaRule.classRevoke {
+            let sc = Data((h + "\n").utf8)
+            DispatchQueue.main.async { self.showLessonImport(f, sc) }
+            return (0, 0, 0, nil)
+        }
+        do {
+            if AnaMesh.classOf(f) == AnaMesh.classGst {       // GST packs
+                return (0, 0, gstReceived(try AnaMesh.readGst(f)), nil)
+            }
+            let r = addToLog(try AnaMesh.read(f))             // ANA entries (class 20) -> the log (GAXT notifications land here)
+            return (r.0, r.1, 0, nil)
+        } catch {
+            return (0, 0, 0, "\(name): \(error.localizedDescription)")
+        }
+    }
+
+    /// A whole .pngmesh pushed over the mesh (ChatNet file push). Self-verified by its own trailer + the framed
+    /// length, so no .sha256 sidecar is needed. Returns nil if ANA took it, else why not.
+    func ingestPushedMesh(_ f: Data) -> String? {
+        guard AnaMesh.looksLikePngmesh(f) else { return "not a .pngmesh" }
+        let r = ingestOneMesh(f, AnaMesh.sha256(f), name: "pushed")
+        var msg = ""
+        if r.added + r.skipped > 0 { msg = "Imported \(r.added)" + (r.skipped > 0 ? ", \(r.skipped) already here" : "") }
+        if r.gst > 0 { msg += (msg.isEmpty ? "" : "\n") + "GST: \(r.gst) " + (r.gst == 1 ? "update" : "updates") + " received" }
+        if let n = r.note { msg += (msg.isEmpty ? "" : "\n") + n }
+        if !msg.isEmpty { toast(msg) }
+        deliverPending()
+        return nil
     }
 
     // ================================================================================================ GST
