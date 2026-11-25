@@ -90,16 +90,16 @@ final class ChatNet {
     // ------------------------------------------------------------------ receiving a framed file push
     /// After the "ANAFILE1" marker: 8 bytes big-endian length, then that many bytes = a whole .pngmesh.
     private func takeFile(_ c: NWConnection, _ pre: Data) {
-        readN(c, 8, pre) { head in
+        readN(c, 8, pre) { head, after in
             guard let head = head, head.count == 8 else {
                 c.send(content: Data("NO bad header\n".utf8), completion: .contentProcessed { _ in c.cancel() }); return
             }
             var n = 0
-            for i in 0..<8 { n = (n << 8) | Int(head[head.startIndex + i]) }       // big-endian int64 (fits Int)
+            for byte in head { n = (n << 8) | Int(byte) }                           // big-endian int64 (fits Int)
             if n <= 0 || n > ChatNet.maxFile {
                 c.send(content: Data("NO bad size\n".utf8), completion: .contentProcessed { _ in c.cancel() }); return
             }
-            self.readN(c, n, Data()) { body in
+            self.readN(c, n, after) { body, _ in                                    // `after` = bytes that rode in with the length prefix
                 var reply = "NO truncated"
                 if let body = body, body.count == n {
                     let g = DispatchGroup()
@@ -116,14 +116,16 @@ final class ChatNet {
         }
     }
 
-    /// Read exactly `need` bytes (starting from whatever `got` already holds), or nil if the stream ends first.
-    private func readN(_ c: NWConnection, _ need: Int, _ got: Data, _ done: @escaping (Data?) -> Void) {
-        if got.count >= need { done(got.prefix(need)); return }
+    /// Read exactly `need` bytes; calls back with (the `need` bytes, any leftover bytes already read past them),
+    /// or (nil, _) if the stream ends first. Preserving the leftover is essential: the length prefix and the file
+    /// body often arrive in one TCP chunk, and the body read must continue from those leftover bytes.
+    private func readN(_ c: NWConnection, _ need: Int, _ got: Data, _ done: @escaping (Data?, Data) -> Void) {
+        if got.count >= need { done(Data(got.prefix(need)), Data(got.dropFirst(need))); return }
         c.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] d, _, end, err in
             var all = got
             if let d = d { all.append(d) }
-            if all.count >= need { done(all.prefix(need)); return }
-            if end || err != nil { done(nil); return }
+            if all.count >= need { done(Data(all.prefix(need)), Data(all.dropFirst(need))); return }
+            if end || err != nil { done(nil, Data()); return }
             self?.readN(c, need, all, done)
         }
     }
