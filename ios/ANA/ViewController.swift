@@ -244,6 +244,8 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         case "walletText": return Wallets.shared.pageText()
         case "lessonsText": return Lessons.shared.text()
         case "lessonsOpen": later { self.showLessons() }; return true
+        case "penText": return detainPenText()               // ANA #2 1b slice 3: detain-pen count for a badge
+        case "penOpen": later { self.showDetainPen() }; return true
         case "billsText": return Bills.shared.text()
         case "billsOpen": later { self.billsOpen() }; return true
         case "chatOpen": later { self.chatOpen() }; return true
@@ -790,6 +792,9 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             })
         }
         ac.addAction(UIAlertAction(title: "Import a lesson...", style: .default) { [weak self] _ in self?.pickFiles() })
+        let penN = penRecords().count
+        ac.addAction(UIAlertAction(title: penN > 0 ? "Detain pen (\(penN) held)\u{2026}" : "Detain pen\u{2026}",
+                                   style: penN > 0 ? .destructive : .default) { [weak self] _ in self?.showDetainPen() })
         ac.addAction(UIAlertAction(title: "Close", style: .cancel))
         if let pop = ac.popoverPresentationController {
             pop.sourceView = view
@@ -877,7 +882,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
 
     /// Route ONE imported/pushed .pngmesh by its class — the single place that decides what each class does, so
     /// the file importer (two-file pairing) and the mesh file push (framed, one payload) stay in step.
-    private func ingestOneMesh(_ f: Data, _ h: String, name: String) -> (added: Int, skipped: Int, gst: Int, note: String?) {
+    private func ingestOneMesh(_ f: Data, _ h: String, name: String, released: Bool = false) -> (added: Int, skipped: Int, gst: Int, note: String?) {
         if AnaMesh.classOf(f) == AnaMesh.classRoundTrip {     // ROUND-TRIP: a proof the human carried out and back
             rtInbox.append(h)                                 // hand its sha256 to the sketch; it mints if it matches what it sent
             return (0, 0, 0, "Round-trip proof received \u{2713}")
@@ -904,6 +909,17 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
         let lc = Lessons.classOf(f)                           // LESSONS: a lesson (30) or a root-chain file (31, 32)
         if lc == AnaRule.classLesson || lc == AnaRule.classPermit || lc == AnaRule.classRevoke {
             let sc = Data((h + "\n").utf8)
+            // ANA #2 1b (slice 3): the detain pen. The authority tier is FAIL-CLOSED. A suspicious verdict
+            // (bad signature, unknown key, fork, malformed, revoked, ...) is DETAINED at rung 0 — held and
+            // described, NEVER executed, and NEVER silently dropped. distrust != reject. A capsule the human
+            // released from the pen carries `released` and skips this, routing through the normal import.
+            if !released {
+                let v = Lessons.shared.preview(f, sc)         // dry run: saves/restores state, mutates nothing
+                if penShouldDetain(v.0) {
+                    let fresh = detain(f, h, cls: lc, reason: v.0, words: v.1)
+                    return (0, 0, 0, (fresh ? "Detained \u{2014} " : "Already in the pen \u{2014} ") + v.1)
+                }
+            }
             DispatchQueue.main.async { self.showLessonImport(f, sc) }
             return (0, 0, 0, nil)
         }
@@ -987,6 +1003,94 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     }
     private func trustFor(_ key: String) -> String {
         ((UserDefaults.standard.dictionary(forKey: "ana_entry_trust") as? [String: String]) ?? [:])[key] ?? ""
+    }
+
+    // ============================================================================== ANA #2 1b slice 3: DETAIN PEN
+    // Rung 0. A sealed store of authority capsules that failed the fail-closed check. Each record DESCRIBES the
+    // capsule (class, sha, verdict, words, first/last seen, hit-count) and keeps its bytes so the human can
+    // release it — but ANA never RUNS a held capsule. Dedup by sha; a hard cap drops the oldest first.
+    private let penKey = "ana_detain_pen"
+    private let penCap = 50
+    /// fail-closed: anything that is not a clean accept or a benign redundancy is held.
+    private func penShouldDetain(_ verdict: String) -> Bool {
+        !["ACCEPT", "DUPLICATE", "OLDER", "UPDATE_FIRST"].contains(verdict)
+    }
+    private func penRecords() -> [[String: Any]] {
+        (UserDefaults.standard.array(forKey: penKey) as? [[String: Any]]) ?? []
+    }
+    private func penSave(_ recs: [[String: Any]]) { UserDefaults.standard.set(recs, forKey: penKey) }
+    /// Hold a capsule. Returns true if newly held, false if it was already in the pen (hit-count bumped).
+    @discardableResult
+    private func detain(_ f: Data, _ sha: String, cls: Int, reason: String, words: String) -> Bool {
+        var recs = penRecords()
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        if let i = recs.firstIndex(where: { ($0["sha"] as? String) == sha }) {
+            recs[i]["count"] = ((recs[i]["count"] as? Int) ?? 1) + 1   // dedup: same capsule knocking again
+            recs[i]["lastMs"] = now
+            penSave(recs)
+            return false
+        }
+        recs.append(["sha": sha, "cls": cls, "reason": reason, "words": words,
+                     "firstMs": now, "lastMs": now, "count": 1, "b64": f.base64EncodedString()])
+        if recs.count > penCap {                                       // cap: keep the newest, drop the oldest seen
+            recs.sort { (($0["firstMs"] as? Int) ?? 0) < (($1["firstMs"] as? Int) ?? 0) }
+            recs.removeFirst(recs.count - penCap)
+        }
+        penSave(recs)
+        return true
+    }
+    /// Let a held capsule out: remove it, then re-feed it through the normal path (crypto checks still apply).
+    func releaseFromPen(_ sha: String) {
+        var recs = penRecords()
+        guard let i = recs.firstIndex(where: { ($0["sha"] as? String) == sha }),
+              let b64 = recs[i]["b64"] as? String, let f = Data(base64Encoded: b64) else { return }
+        recs.remove(at: i); penSave(recs)
+        _ = ingestOneMesh(f, sha, name: "released", released: true)    // bypass the pen, route normally
+        toast("Released from the pen")
+    }
+    func discardFromPen(_ sha: String) {
+        var recs = penRecords(); recs.removeAll { ($0["sha"] as? String) == sha }; penSave(recs)
+        toast("Discarded from the pen")
+    }
+    private func detainPenText() -> String {                           // simple count for a badge; expand later
+        let n = penRecords().count
+        return n == 0 ? "" : "\(n)"
+    }
+    private func showDetainPen() {
+        let recs = penRecords().sorted { (($0["lastMs"] as? Int) ?? 0) > (($1["lastMs"] as? Int) ?? 0) }
+        let ac = UIAlertController(
+            title: "Detain pen",
+            message: recs.isEmpty
+                ? "Nothing held. Suspicious authority capsules \u{2014} bad signature, unknown key, fork, malformed \u{2014} are quarantined here, described but never run, until you release them."
+                : "\(recs.count) held \u{2014} described, never run. Release to retry through the normal import, or discard.",
+            preferredStyle: .actionSheet)
+        for rec in recs {
+            let sha = (rec["sha"] as? String) ?? ""
+            let cls = (rec["cls"] as? Int) ?? 0
+            let words = (rec["words"] as? String) ?? ((rec["reason"] as? String) ?? "held")
+            let cnt = (rec["count"] as? Int) ?? 1
+            let kind = cls == AnaRule.classLesson ? "lesson" : (cls == AnaRule.classPermit ? "permit" : "revoke")
+            let label = kind + " \u{00b7} " + words + (cnt > 1 ? "  (\u{00d7}\(cnt))" : "") + "  \u{00b7} " + String(sha.prefix(8))
+            ac.addAction(UIAlertAction(title: label, style: .default) { [weak self] _ in self?.showPenRecord(sha, kind, words) })
+        }
+        ac.addAction(UIAlertAction(title: "Close", style: .cancel))
+        if let pop = ac.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 1, height: 1)
+            pop.permittedArrowDirections = []
+        }
+        present(ac, animated: true)
+    }
+    private func showPenRecord(_ sha: String, _ kind: String, _ words: String) {
+        let d = UIAlertController(
+            title: "Held " + kind,
+            message: words + "\n\n" + String(sha.prefix(16))
+                + "\n\nThis capsule is described, not run. Release it to retry through the normal import (crypto checks still apply), or discard it.",
+            preferredStyle: .alert)
+        d.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        d.addAction(UIAlertAction(title: "Release", style: .default) { [weak self] _ in self?.releaseFromPen(sha) })
+        d.addAction(UIAlertAction(title: "Discard", style: .destructive) { [weak self] _ in self?.discardFromPen(sha) })
+        present(d, animated: true)
     }
     private var gstAnswers = [String: String]()       // dialog id -> "O\tvalues..." or "C"
 

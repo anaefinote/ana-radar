@@ -257,6 +257,8 @@
         tailAdd: function () { if (window.__ANA_IOS && AndroidANA.tailAdd) AndroidANA.tailAdd(); },
         tailPeers: function () { return window.__ANA_IOS && AndroidANA.tailPeers ? String(AndroidANA.tailPeers() || '') : ''; },
         entryTrust: function (key) { return window.__ANA_IOS && AndroidANA.entryTrust ? String(AndroidANA.entryTrust(String(key)) || '') : ''; },
+        penText: function () { return window.__ANA_IOS && AndroidANA.penText ? String(AndroidANA.penText() || '') : ''; },   // DETAIN PEN (slice 3)
+        penOpen: function () { if (window.__ANA_IOS && AndroidANA.penOpen) AndroidANA.penOpen(); },
         gstAsk:      function (id, t, m, s) { if (window.__ANA_IOS) AndroidANA.gstAsk(String(id), String(t), String(m), String(s)); },
         gstPick:     function (id, t, items) { if (window.__ANA_IOS) AndroidANA.gstPick(String(id), String(t), String(items)); },
         gstAnswer:   function (id) { return window.__ANA_IOS ? String(AndroidANA.gstAnswer(String(id)) || '') : ''; },

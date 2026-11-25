@@ -15,6 +15,7 @@ window.__ANA_IOS = true;
     'walletTotals', 'gstSend', 'gstInbox', 'gstAsk', 'gstPick', 'gstAnswer',
     'roundTripShare', 'roundTripInbox', 'sealExport',
     'coSignRequest', 'coSignReply', 'coSignInbox', 'lanPeers', 'tailAdd', 'tailPeers', 'entryTrust',
+    'penText', 'penOpen',
     'flexKey', 'flexSign', 'flexVerify', 'flexHash'];
   var A = {};
   names.forEach(function (n) {
