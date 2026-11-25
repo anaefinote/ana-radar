@@ -909,8 +909,21 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             if AnaMesh.classOf(f) == AnaMesh.classGst {       // GST packs
                 return (0, 0, gstReceived(try AnaMesh.readGst(f)), nil)
             }
-            let r = addToLog(try AnaMesh.read(f))             // ANA entries (class 20) -> the log (GAXT notifications land here)
-            return (r.0, r.1, 0, nil)
+            // ANA entries (class 20) -> the log. ANA #2 Tier-1: verify each row's signature if present.
+            // Distrust by default — unsigned still imports, visibly unverified; signed earns a "verified" note.
+            let signed = try AnaMesh.readSigned(f)
+            var verified = 0
+            var signer = ""
+            for row in signed {
+                let sig = row.count > 9 ? row[9] : "", sgn = row.count > 10 ? row[10] : ""
+                if !sig.isEmpty, !sgn.isEmpty, AnaMesh.verifyEntry(sgn, AnaMesh.canonicalEntry(row), sig) {
+                    verified += 1
+                    if signer.isEmpty { signer = AnaMesh.signerTag(sgn) }
+                }
+            }
+            let r = addToLog(signed.map { Array($0.prefix(9)) })
+            let note = verified > 0 ? "\(verified) verified \u{00b7} \(signer)" : nil
+            return (r.0, r.1, 0, note)
         } catch {
             return (0, 0, 0, "\(name): \(error.localizedDescription)")
         }

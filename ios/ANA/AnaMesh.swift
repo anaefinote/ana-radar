@@ -159,6 +159,48 @@ enum AnaMesh {
         try read(d, want: classAnaEntries, wantCols: cols)
     }
 
+    // ---- ANA #2 Tier-1: per-entry signatures ride as two extra class-20 columns (sig, signer).
+    // Old readers resolve by name and ignore them; a signed file still imports everywhere.
+    static let signedCols = cols + ["sig", "signer"]       // 11 columns: the 9 + sig + signer
+
+    /// Rows with sig + signer appended (indices 9, 10). Unsigned rows have "" there.
+    static func readSigned(_ d: Data) throws -> [[String]] {
+        try read(d, want: classAnaEntries, wantCols: signedCols)
+    }
+
+    /// The canonical a row was signed over: the STABLE fields only (src, postMs, package, title, text).
+    static func canonicalEntry(_ row: [String]) -> String {
+        let g: (Int) -> String = { row.count > $0 ? row[$0] : "" }
+        return [g(0), g(2), g(3), g(4), g(5)].joined(separator: "\n")
+    }
+
+    /// Verify one entry's signature (ECDSA P-256 / SHA-256, DER sig, SPKI pubkey) — same scheme as GAXT's AnaSign.
+    static func verifyEntry(_ signerHex: String, _ canonical: String, _ sigHex: String) -> Bool {
+        guard !signerHex.isEmpty, !sigHex.isEmpty,
+              let pubD = hexToData(signerHex), let sigD = hexToData(sigHex),
+              let pub = try? P256.Signing.PublicKey(derRepresentation: pubD),
+              let sig = try? P256.Signing.ECDSASignature(derRepresentation: sigD) else { return false }
+        return pub.isValidSignature(sig, for: Data(canonical.utf8))
+    }
+
+    /// Short, display-only fingerprint of a signer key (never a trust decision — that's the full key).
+    static func signerTag(_ signerHex: String) -> String {
+        guard let d = hexToData(signerHex) else { return "a key" }
+        return "companion " + String(sha256(d).prefix(8))
+    }
+
+    private static func hexToData(_ s: String) -> Data? {
+        let c = Array(s)
+        if c.count % 2 != 0 { return nil }
+        var out = Data(capacity: c.count / 2)
+        var i = 0
+        while i < c.count {
+            guard let hi = c[i].hexDigitValue, let lo = c[i + 1].hexDigitValue else { return nil }
+            out.append(UInt8(hi << 4 | lo)); i += 2
+        }
+        return out
+    }
+
     /// GST packs, in gstCols order
     static func readGst(_ d: Data) throws -> [[String]] {
         try read(d, want: classGst, wantCols: gstCols)
