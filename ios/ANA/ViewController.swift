@@ -912,18 +912,31 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             // ANA entries (class 20) -> the log. ANA #2 Tier-1: verify each row's signature if present.
             // Distrust by default — unsigned still imports, visibly unverified; signed earns a "verified" note.
             let signed = try AnaMesh.readSigned(f)
-            var verified = 0
-            var signer = ""
+            // ANA #2 1b: verify + rung. A verified entry from a PINNED companion key = rung 3 ("your companion").
+            // First verified companion ever seen is pinned (TOFU). A verified entry from a different, unpinned key
+            // while others are pinned = rung 2 ("unrecognized companion") — never silently trusted.
+            var pins = pinnedCompanions
+            var vPinned = 0, vUnknown = 0, newlyPinned = false
+            var pinnedTag = "", unknownTag = ""
             for row in signed {
                 let sig = row.count > 9 ? row[9] : "", sgn = row.count > 10 ? row[10] : ""
-                if !sig.isEmpty, !sgn.isEmpty, AnaMesh.verifyEntry(sgn, AnaMesh.canonicalEntry(row), sig) {
-                    verified += 1
-                    if signer.isEmpty { signer = AnaMesh.signerTag(sgn) }
+                if sig.isEmpty || sgn.isEmpty { continue }
+                if !AnaMesh.verifyEntry(sgn, AnaMesh.canonicalEntry(row), sig) { continue }
+                if pins.contains(sgn) {
+                    vPinned += 1; if pinnedTag.isEmpty { pinnedTag = AnaMesh.signerTag(sgn) }
+                } else if pins.isEmpty {
+                    pins.insert(sgn); newlyPinned = true
+                    vPinned += 1; if pinnedTag.isEmpty { pinnedTag = AnaMesh.signerTag(sgn) }
+                } else {
+                    vUnknown += 1; if unknownTag.isEmpty { unknownTag = AnaMesh.signerTag(sgn) }
                 }
             }
+            if newlyPinned { pinnedCompanions = pins }       // persist the first-pinned companion
             let r = addToLog(signed.map { Array($0.prefix(9)) })
-            let note = verified > 0 ? "\(verified) verified \u{00b7} \(signer)" : nil
-            return (r.0, r.1, 0, note)
+            var parts = [String]()
+            if vPinned > 0 { parts.append("\(vPinned) verified \u{00b7} " + (newlyPinned ? "new \(pinnedTag) (pinned as yours)" : "your \(pinnedTag)")) }
+            if vUnknown > 0 { parts.append("\(vUnknown) signed \u{00b7} unrecognized \(unknownTag)") }
+            return (r.0, r.1, 0, parts.isEmpty ? nil : parts.joined(separator: "\n"))
         } catch {
             return (0, 0, 0, "\(name): \(error.localizedDescription)")
         }
@@ -950,6 +963,11 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
     private var rtInbox = [String]()                  // ROUND-TRIP: sha256 of each round-trip .pngmesh imported back
     private var coSignInbox = [String]()              // CO-SIGN: "REQ\t<body>" / "REPLY\t<body>" of each imported co-sign file
     private var tailLive = Set<String>()              // PRESENCE MESH: tailnet addresses that answered a reachability ping
+    // ANA #2 1b: companion signer keys this phone has pinned (TOFU). A verified entry from one of these is rung 3.
+    private var pinnedCompanions: Set<String> {
+        get { Set((UserDefaults.standard.array(forKey: "ana_pinned_companions") as? [String]) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "ana_pinned_companions") }
+    }
     private var gstAnswers = [String: String]()       // dialog id -> "O\tvalues..." or "C"
 
     /// received packs: to the sketch; spend alerts also land on Pulse
