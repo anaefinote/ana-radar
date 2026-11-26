@@ -6,9 +6,39 @@ final int T_PULSE = 0, T_ARCHIVE = 1, T_APPIFY = 2, T_TIMELINE = 3, T_SETTINGS =
 String[] tabName = { "Pulse", "Archive", "APPify", "Timeline", "Settings", "Radar", "eFLEX" };
 final int NTABS = 7;
 
-// the tabs shown in the bar (iOS: no APPify)
+// feature visibility (hive=shell): the bar shows only SEEN tabs. js.visibility() returns
+// {"pulse":1,"lessons":0,...,"_flavour":"..."}; cached and refreshed about once a second so
+// we never hit the synchronous bridge 60x a frame.
+String visJson = "";
+boolean visLoaded = false;
+int visTick = 0;
+void visMaybeRefresh() {
+  if (js == null) { visLoaded = true; return; }            // desktop SIM: everything seen
+  if (visLoaded && (visTick++ % 90 != 0)) return;
+  try { String s = js.visibility(); if (s != null) visJson = s; } catch (Exception e) { }
+  visLoaded = true;
+}
+boolean seenFeature(String key) { return visJson.indexOf("\"" + key + "\":0") < 0; }   // hidden only if explicitly 0
+String tabFeature(int t) {
+  if (t == T_PULSE) return "pulse";
+  if (t == T_ARCHIVE) return "archive";
+  if (t == T_APPIFY) return "appify";
+  if (t == T_TIMELINE) return "timeline";
+  if (t == T_RADAR) return "radar";
+  if (t == T_EFLEX) return "eflex";
+  if (t == T_SETTINGS) return "settings";
+  return "";
+}
+
+// the tabs shown in the bar: only the ones a visibility config leaves SEEN
 int[] barTabs() {
-  int[] t = { T_PULSE, T_ARCHIVE, T_APPIFY, T_TIMELINE, T_RADAR, T_EFLEX, T_SETTINGS };
+  int[] all = { T_PULSE, T_ARCHIVE, T_APPIFY, T_TIMELINE, T_RADAR, T_EFLEX, T_SETTINGS };
+  int n = 0;
+  for (int i = 0; i < all.length; i++) if (seenFeature(tabFeature(all[i]))) n++;
+  if (n == 0) return all;                                   // never leave the user with no tabs
+  int[] t = new int[n];
+  int j = 0;
+  for (int i = 0; i < all.length; i++) if (seenFeature(tabFeature(all[i]))) t[j++] = all[i];
   return t;
 }
 int tab = T_APPIFY;
@@ -62,6 +92,7 @@ void boldText(String s, float x, float y) {
 }
 
 void drawBar() {
+  visMaybeRefresh();
   fill(#05070C);                             // the base colour: no grey panel, just a faint outline
   rrect(barX, barY, barW, barH, 24 * u);
   stroke(#151922);
@@ -95,6 +126,9 @@ void drawBar() {
   noStroke();
 
   int[] bt = barTabs();
+  boolean onVisible = false;                               // if a config hid the active tab, fall to the first visible one
+  for (int k = 0; k < bt.length; k++) if (bt[k] == tab) onVisible = true;
+  if (!onVisible) tab = bt[0];
   float cw = (barW - 44 * u) / bt.length;
   for (int k = 0; k < bt.length; k++) {
     int i = bt[k];

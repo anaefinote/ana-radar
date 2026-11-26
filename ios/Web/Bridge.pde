@@ -95,6 +95,7 @@ interface JavaScript {
   boolean flexVerify(String key, String text, String sig);           // FLEX: check someone's signature
   String flexHash(String text);        // FLEX: sha256 (hex)
   String gstAnswer(String id);         // GST: "" while waiting, "C" cancelled, "O TAB values..." (or "O TAB index")
+  String visibility();  // feature on/off map + flavour: {"pulse":1,"lessons":0,...,"_flavour":"ea80bc44"}
   String status();      // CONNECTED / ENABLED - WAITING TO BIND / NO ACCESS ...
   int screenW();        // device pixels (100% pixels)
   int screenH();
