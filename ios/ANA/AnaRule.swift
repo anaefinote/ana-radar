@@ -9,8 +9,8 @@ import CryptoKit
 /// bytes, the build and what this phone has already accepted: no clock, no network, no randomness.
 final class AnaRule {
     static let classLesson = 30, classPermit = 31, classRevoke = 32
-    static let hivesAll = ["watch", "efinote", "clipnote", "pacenote", "hivenote", "flex"]
-    static let hivesLevel1 = ["watch"]
+    static let hivesAll = ["watch", "efinote", "clipnote", "pacenote", "hivenote", "flex", "shell"]
+    static let hivesLevel1 = ["watch", "shell"]
 
     let reader: Int
     let tier: String
@@ -84,7 +84,7 @@ final class AnaRule {
         let kid = rows[nr - 2], sg = rows[nr - 1]
         if kid[0] != "sig" || kid[1] != "key_id" || sg[0] != "sig" || sg[1] != "value" { throw Bad(why: "sig rows") }
         if !AnaRule.full("[0-9a-f]{64}", kid[2]) || !AnaRule.full("[0-9a-f]{128}", sg[2]) { throw Bad(why: "sig hex") }
-        let ok = ["lesson", "coin", "address", "reader", "server", "param", "test", "permit", "chain", "revoke"]
+        let ok = ["lesson", "coin", "address", "reader", "server", "param", "test", "feature", "permit", "chain", "revoke"]
         var seen = Set<String>()
         for i in 0..<(nr - 2) {
             if !ok.contains(rows[i][0]) { throw Bad(why: "section " + rows[i][0]) }
@@ -185,7 +185,7 @@ final class AnaRule {
             if ver < iv { return ("OLDER", "") }
             if ver == iv { return lessonHash[id] == bh ? ("DUPLICATE", "") : ("FORK", "") }
         }
-        let errs = lintLesson(s.kv)
+        let errs = (hive == "shell") ? AnaRule.lintShell(s.kv) : lintLesson(s.kv)
         if !errs.isEmpty { return ("BAD_RULES", errs.joined(separator: "; ")) }
         lessonVer[id] = ver
         lessonHash[id] = bh
@@ -228,6 +228,21 @@ final class AnaRule {
         let t = all.first { $0.0 == "lesson|tier" }?.1 ?? ""
         if t != "ana" && t != "statia" { errs.append("lesson|tier: ana or statia") }
         return errs
+    }
+
+    /// Visibility config (hive=shell): feature|<key> = seen|unseen. Nothing coin-related.
+    static func lintShell(_ all: [(String, String)]) -> [String] {
+        var e: [String] = []
+        if !full("[a-z0-9][a-z0-9_-]{1,31}", all.first { $0.0 == "lesson|id" }?.1 ?? "") { e.append("lesson|id") }
+        let feats = all.filter { $0.0.hasPrefix("feature|") }
+        if feats.isEmpty { e.append("feature|*: none") }
+        for (k, v) in feats {
+            if !full("feature\\|[a-z0-9][a-z0-9_-]{1,31}", k) { e.append(k + ": name") }
+            if v != "seen" && v != "unseen" { e.append(k + ": seen or unseen") }
+        }
+        let t = all.first { $0.0 == "lesson|tier" }?.1 ?? ""
+        if t != "ana" && t != "statia" { e.append("lesson|tier") }
+        return e
     }
 
     static func lint(_ kv: [(String, String)]) -> [String] {

@@ -38,6 +38,7 @@ final class Lessons {
     private(set) var list: [Lesson] = []
     private(set) var problems = ""
     private var rule: AnaRule!
+    private var shellMaps: [[String: Bool]] = []     // feature visibility from accepted hive=shell configs
 
     var dir: URL {
         let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("lessons")
@@ -45,16 +46,24 @@ final class Lessons {
         return d
     }
 
-    private init() { load() }
+    private init() { reloadAndApply() }
 
     private func fresh() -> AnaRule {
-        AnaRule(reader: Lessons.readerLevel, tier: Wallets.statia ? "statia" : "ana", hives: ["watch"], trustedRawHex: Lessons.trusted)
+        AnaRule(reader: Lessons.readerLevel, tier: Wallets.statia ? "statia" : "ana", hives: ["watch", "shell"], trustedRawHex: Lessons.trusted)
+    }
+
+    /// Real (committing) reload: rebuild coin lessons AND re-derive feature visibility from the kept configs.
+    private func reloadAndApply() {
+        load()
+        Visibility.shared.reset()
+        for m in shellMaps { Visibility.shared.apply(m) }
     }
 
     // ---------------------------------------------------------------- state: rebuilt from the kept files
     func load() {
         let r = fresh()
         var l: [Lesson] = []
+        var shells: [[String: Bool]] = []
         var bad = ""
         let order = readOrder()
         for pass in 0..<2 {                              // root-chain files first, then lessons
@@ -66,8 +75,14 @@ final class Lessons {
                 let v = r.check(f, sc)
                 if v.0 == "ACCEPT", cls == AnaRule.classLesson, let s = r.last {
                     let id = s.get("lesson|id") ?? ""
-                    l.removeAll { $0.id == id }
-                    l.append(Lesson(id: id, version: AnaRule.intOr(s.get("lesson|version"), 0), file: name, keyId: s.keyId, kv: s.kv))
+                    if (s.get("lesson|hive") ?? "") == "shell" {
+                        var m: [String: Bool] = [:]
+                        for (k, val) in s.kv where k.hasPrefix("feature|") { m[String(k.dropFirst(8))] = (val == "seen") }
+                        shells.append(m)
+                    } else {
+                        l.removeAll { $0.id == id }
+                        l.append(Lesson(id: id, version: AnaRule.intOr(s.get("lesson|version"), 0), file: name, keyId: s.keyId, kv: s.kv))
+                    }
                 } else if v.0 != "ACCEPT" {
                     bad += name + ": " + Lessons.say(v.0) + "\n"
                 }
@@ -75,17 +90,18 @@ final class Lessons {
         }
         rule = r
         list = l
+        shellMaps = shells
         problems = bad
     }
 
     /// What would happen if this file were added (nothing changes): (verdict, plain words, confirm text or "")
     func preview(_ f: Data, _ sidecar: Data?) -> (String, String, String) {
-        let savedRule = rule, savedList = list, savedProblems = problems
+        let savedRule = rule, savedList = list, savedProblems = problems, savedShell = shellMaps
         load()
         let v = rule.check(f, sidecar)
         var confirm = ""
         if v.0 == "ACCEPT", Lessons.classOf(f) == AnaRule.classLesson, let s = rule.last { confirm = Lessons.confirmText(s.kv) }
-        rule = savedRule; list = savedList; problems = savedProblems
+        rule = savedRule; list = savedList; problems = savedProblems; shellMaps = savedShell
         return (v.0, Lessons.say(v.0) + (v.1.isEmpty || v.0 == "ACCEPT" ? "" : " (" + v.1 + ")"), confirm)
     }
 
@@ -101,7 +117,7 @@ final class Lessons {
         var order = readOrder()
         if !order.contains(name) { order.append(name) }
         writeOrder(order)
-        load()
+        reloadAndApply()
         return "Added"
     }
 
@@ -113,7 +129,7 @@ final class Lessons {
             try? FileManager.default.removeItem(at: dir.appendingPathComponent(l.file + ".sha256"))
         }
         writeOrder(order)
-        load()
+        reloadAndApply()
     }
 
     func find(_ id: String) -> Lesson? { list.first { $0.id == id } }

@@ -12,9 +12,9 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551
 READER_LEVEL = 1
-HIVES_ALL = ["watch", "efinote", "clipnote", "pacenote", "hivenote", "flex"]
-HIVES_DEFINED = {1: ["watch"]}          # hives whose rows this Spec level defines
-SECTIONS = ["lesson", "coin", "address", "reader", "server", "param", "test", "permit", "sig"]
+HIVES_ALL = ["watch", "efinote", "clipnote", "pacenote", "hivenote", "flex", "shell"]
+HIVES_DEFINED = {1: ["watch", "shell"]}  # hives whose rows this Spec level defines; shell = feature visibility configs
+SECTIONS = ["lesson", "coin", "address", "reader", "server", "param", "test", "feature", "permit", "sig"]
 CLASS_LESSON, CLASS_PERMIT, CLASS_REVOKE = 30, 31, 32
 
 # ------------------------------------------------------------------ keys
@@ -210,6 +210,30 @@ def b58_len(a):
 # ------------------------------------------------------------------ lint (watch hive, reader level 1)
 SECRET_URL = re.compile(r".*[?&](api_?key|key|token|secret|project_id|auth|access_token)=.*")
 SECRET_ANY = re.compile(r".*(apikey|api_key|api-key|x-api|authorization|bearer |project_id|secret).*")
+
+def lint_shell(kv):
+    # visibility config (hive=shell): feature|<key> = seen|unseen rows. Nothing coin-related.
+    e = []
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,31}", kv.get("lesson|id", "")):
+        e.append("lesson|id")
+    for k, lo, hi in (("lesson|version", 1, 1000000), ("lesson|needs_reader", 1, 1000)):
+        try:
+            if not (lo <= int(kv.get(k, "").strip()) <= hi):
+                e.append(k)
+        except ValueError:
+            e.append(k)
+    if kv.get("lesson|tier") not in ("ana", "statia"):
+        e.append("lesson|tier")
+    feats = [k for k in kv if k.startswith("feature|")]
+    if not feats:
+        e.append("feature|*: none")
+    for k in feats:
+        if not re.fullmatch(r"feature\|[a-z0-9][a-z0-9_-]{1,31}", k):
+            e.append(k + ": name")
+        if kv[k] not in ("seen", "unseen"):
+            e.append(k + ": must be seen or unseen")
+    return e
+
 
 def lint(kv):
     e = []
@@ -436,7 +460,7 @@ class Phone:
                 return "OLDER", ""
             if ver == iv:
                 return ("DUPLICATE", "") if ih == bh else ("FORK", "")
-        errs = lint(kv)
+        errs = lint_shell(kv) if hive == "shell" else lint(kv)
         if errs:
             return "BAD_RULES", ", ".join(errs)
         if commit:

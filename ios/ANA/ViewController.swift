@@ -164,6 +164,7 @@ final class ViewController: UIViewController, WKUIDelegate, WKNavigationDelegate
             }
             return true
         case "status": return AndroidLink.shared.relaying ? "CONNECTED" : "IOS"   // Live / RECORDING while linked
+        case "visibility": return Visibility.shared.asJSON()   // {"pulse":1,"lessons":0,...,"_flavour":"ea80bc44"} — the page hides features marked 0
         case "watchList": return defaults.string(forKey: "watch") ?? ""
         case "saveWatch": defaults.set(arg(a, 0), forKey: "watch"); return true
         case "pref": return pref(arg(a, 0))
