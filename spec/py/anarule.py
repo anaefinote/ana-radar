@@ -192,7 +192,20 @@ def addr_ok(kind, pattern, hrp, versions, a):
         return b58check_ok(a, versions)
     if kind == "bech32":
         return bech32_ok(a, hrp)
+    if kind == "base58":
+        return b58_len(a) == 32          # plain base58, 32-byte key (Solana, no checksum)
     return False
+
+
+def b58_len(a):
+    n = 0
+    for ch in a:
+        i = B58.find(ch)
+        if i < 0:
+            return None
+        n = n * 58 + i
+    raw = n.to_bytes((n.bit_length() + 7) // 8, "big") if n else b""
+    return (len(a) - len(a.lstrip("1"))) + len(raw)
 
 # ------------------------------------------------------------------ lint (watch hive, reader level 1)
 SECRET_URL = re.compile(r".*[?&](api_?key|key|token|secret|project_id|auth|access_token)=.*")
@@ -227,7 +240,7 @@ def lint(kv):
     if not forms:
         e.append("address forms")
     for n, kind, pat, hrp, vers in forms:
-        if kind not in ("base58check", "bech32", "hex_evm"):
+        if kind not in ("base58check", "bech32", "hex_evm", "base58"):
             e.append("address|%s.kind" % n)
         try:
             re.compile(pat)

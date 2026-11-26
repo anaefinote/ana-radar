@@ -255,7 +255,7 @@ final class AnaRule {
         if forms.isEmpty { e.append("address: need at least one form") }
         for f in forms {
             let nm = "address|" + f[0]
-            if !["base58check", "bech32", "hex_evm"].contains(f[1]) { e.append(nm + ".kind") }
+            if !["base58check", "bech32", "hex_evm", "base58"].contains(f[1]) { e.append(nm + ".kind") }
             if f[2].isEmpty || (try? NSRegularExpression(pattern: f[2])) == nil { e.append(nm + ".pattern") }
             if f[1] == "bech32" && !full("[a-z0-9]{1,20}", f[3]) { e.append(nm + ".hrp") }
             if f[1] == "base58check" && !full("[0-9]{1,3}(,[0-9]{1,3})*", f[4]) { e.append(nm + ".versions") }
@@ -324,6 +324,7 @@ final class AnaRule {
         case "hex_evm": return full("0x[0-9a-fA-F]{40}", a)
         case "base58check": return b58checkOk(a, versions)
         case "bech32": return bech32Variant(a, hrp) != 0
+        case "base58": if let d = b58dec(a) { return d.count == 32 } else { return false }   // plain base58, 32-byte key (Solana, no checksum)
         default: return false
         }
     }

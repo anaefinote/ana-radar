@@ -182,6 +182,7 @@ public class Engine {
     if ("hex_evm".equals(kind)) return a.matches("0x[0-9a-fA-F]{40}");
     if ("base58check".equals(kind)) return b58checkOk(a, versions);
     if ("bech32".equals(kind)) return bech32Variant(a, hrp) != 0;
+    if ("base58".equals(kind)) { byte[] d = b58dec(a); return d != null && d.length == 32; }   // plain base58, 32-byte key (Solana, no checksum)
     return false;
   }
 
@@ -615,7 +616,7 @@ public class Engine {
     for (int i = 0; i < forms.size(); i++) {
       String[] f = forms.get(i);   // name, kind, pattern, hrp, versions
       String nm = "address/" + f[0];
-      if (!(f[1].equals("base58check") || f[1].equals("bech32") || f[1].equals("hex_evm"))) e.add(nm + ".kind: must be base58check, bech32 or hex_evm");
+      if (!(f[1].equals("base58check") || f[1].equals("bech32") || f[1].equals("hex_evm") || f[1].equals("base58"))) e.add(nm + ".kind: must be base58check, base58, bech32 or hex_evm");
       try { Pattern.compile(f[2]); if (f[2].length() == 0) e.add(nm + ".pattern: missing"); } catch (Exception x) { e.add(nm + ".pattern: not a valid pattern"); }
       if (f[1].equals("bech32") && !f[3].matches("[a-z0-9]{1,20}")) e.add(nm + ".hrp: the address prefix, such as bc or addr");
       if (f[1].equals("base58check") && !f[4].matches("[0-9]{1,3}(,[0-9]{1,3})*")) e.add(nm + ".versions: numbers like 0,5");

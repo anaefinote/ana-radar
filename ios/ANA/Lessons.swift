@@ -167,6 +167,7 @@ final class Lessons {
             let v = Lessons.path(j, l.value("param|balance_path"))
             if let s = v as? String, AnaRule.full("[0-9]+", s.trimmingCharacters(in: .whitespaces)) { return s.trimmingCharacters(in: .whitespaces) }
             if let n = v as? NSNumber { return n.stringValue.components(separatedBy: ".")[0] }
+            if l.value("param|balance_absent") == "zero" { return "0" }   // token not held yet -> 0, so the price step still runs
             throw fail("the balance was not where balance_path says")
         default:
             throw fail("unknown reader " + reader)
